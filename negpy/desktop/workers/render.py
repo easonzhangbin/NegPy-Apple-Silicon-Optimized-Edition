@@ -318,6 +318,9 @@ class PreviewLoadTask:
     stitch: StitchConfig = StitchConfig()  # composite: non-primary parts + stored registration
     hdr: HdrConfig = HdrConfig()  # bracket: the other exposures, merged with file_path (the reference)
     flatfield_profile_id: str = ""  # per-part flat-field profile for stitch previews
+    flatfield_strength: float = 1.0
+    flatfield_luminance: float = 1.0
+    flatfield_color: float = 1.0
     lens_corrections: LensCorrections = LensCorrections()
     lens_flatfield: FlatFieldConfig = FlatFieldConfig()
     demosaic: str = DemosaicMode.AUTO  # CFA interpolation for the preview decode
@@ -1148,12 +1151,9 @@ class AssetDiscoveryWorker(QObject):
         by_time = len(times) == len(ordered)
         ordered = capture_ordered(ordered, times)
 
-        # An infrared exposure shot beside a triplet (`_IR`) stays its own frame: gray, it would
-        # classify as a channel and shift every chunk after it.
-        candidates = [p for p in ordered if not os.path.splitext(os.path.basename(p))[0].lower().endswith("_ir")]
-        probes = self._map_files(candidates, probe_frame, lambda p: f"RGB {os.path.basename(p)}", _DECODE_WORKERS)
-        items = [(p, classify_channel(pr.means)) for p, pr in zip(candidates, probes) if pr is not None]
-        signatures = {p: pr.signature for p, pr in zip(candidates, probes) if pr is not None}
+        probes = self._map_files(ordered, probe_frame, lambda p: f"RGB {os.path.basename(p)}", _DECODE_WORKERS)
+        items = [(p, classify_channel(pr.means)) for p, pr in zip(ordered, probes) if pr is not None]
+        signatures = {p: pr.signature for p, pr in zip(ordered, probes) if pr is not None}
 
         result = list(assembled)
         grouped = set()
@@ -1183,7 +1183,7 @@ class AssetDiscoveryWorker(QObject):
             grouped.update({t.red, t.green, t.blue})
 
         result.extend(by_path[p] for p in ordered if p not in grouped)
-        loose = len(candidates) - len(grouped)
+        loose = len(ordered) - len(grouped)
         if loose:
             summary = {
                 "made": len(grouped) // 3,
@@ -1277,11 +1277,27 @@ class PreviewLoadWorker(QObject):
             with _DECODE_MEMORY_GATE.hold("prefetch", task.file_path):
                 if not self._prefetch_is_current(task):
                     return
+                if is_rgb_triplet(task.rgbscan):
+                    # Apple Silicon: a trichrome neighbour warms the merged entry its load reads.
+                    self._preview_service.prefetch_linear_preview_rgb(
+                        task.file_path,
+                        task.rgbscan,
+                        task.workspace_color_space,
+                        use_camera_wb=task.use_camera_wb,
+                        file_hash=task.file_hash,
+                        full_resolution=task.full_resolution,
+                        demosaic=task.demosaic,
+                        integrated_gpu=task.integrated_gpu,
+                        protected_file_hashes=task.protected_file_hashes,
+                        should_cancel=lambda: not self._prefetch_is_current(task),
+                    )
+                    return
                 self._preview_service.prefetch_linear_preview(
                     task.file_path,
                     task.workspace_color_space,
                     use_camera_wb=task.use_camera_wb,
                     file_hash=task.file_hash,
+                    full_resolution=task.full_resolution,
                     half_slice=task.half_slice,
                     demosaic=task.demosaic,
                     positive_source=task.positive_source,
@@ -1320,6 +1336,9 @@ class PreviewLoadWorker(QObject):
                     full_resolution=task.full_resolution,
                     file_hash=task.file_hash,
                     flatfield_profile_id=task.flatfield_profile_id,
+                    flatfield_strength=task.flatfield_strength,
+                    flatfield_luminance=task.flatfield_luminance,
+                    flatfield_color=task.flatfield_color,
                     demosaic=task.demosaic,
                     should_cancel=cancelled,
                     highlight_mode=task.highlight_mode,
@@ -1604,6 +1623,9 @@ def _decode_asset_preview_with_meta(
             stitch,
             workspace_color_space,
             flatfield_profile_id=config.flatfield.profile_id if (stitch.stitch_enabled and config.flatfield.apply) else "",
+            flatfield_strength=config.flatfield.flatfield_strength,
+            flatfield_luminance=config.flatfield.flatfield_luminance,
+            flatfield_color=config.flatfield.flatfield_color,
             **common,
         )
     elif hdr.hdr_enabled and hdr.hdr_paths:

@@ -37,6 +37,9 @@ def main() -> None:
     errors = []
     for locale, path in CATALOGS.items():
         catalog = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        glossary = ROOT / "scripts" / "zh_photography_terms.json"
+        if locale == "zh_CN" and not args.check and glossary.exists():
+            catalog.update(json.loads(glossary.read_text(encoding="utf-8")))
         for source in sorted(messages):
             translated = catalog.get(source, "")
             if not translated:

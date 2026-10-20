@@ -7,6 +7,10 @@ from typing import Any
 import tifffile
 from PIL import Image
 
+from negpy.infrastructure.loaders.constants import SUPPORTED_RAW_EXTENSIONS
+
+_RAW_SUFFIXES = frozenset(ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in SUPPORTED_RAW_EXTENSIONS)
+
 
 @dataclass(frozen=True)
 class PreviewMemoryEstimate:
@@ -60,6 +64,24 @@ def _tiff_dimensions(file_path: str) -> tuple[int, int] | None:
         return None
 
 
+def _raw_dimensions(file_path: str) -> tuple[int, int] | None:
+    """Output size of a camera RAW from LibRaw's header parse (no unpack, a few ms).
+
+    Neither the TIFF reader nor Pillow parses every RAW: a Panasonic RW2's TIFF variant
+    magic, CR3 and others fall through, and the estimate then assumes the worst case, a
+    max_edge square, which on a full-resolution warm is several times the real buffer."""
+    if os.path.splitext(file_path)[1].lower() not in _RAW_SUFFIXES:
+        return None
+    try:
+        import rawpy
+
+        with rawpy.imread(file_path) as raw:
+            w, h = int(raw.sizes.width), int(raw.sizes.height)
+        return (w, h) if w > 0 and h > 0 else None
+    except Exception:
+        return None
+
+
 def _image_dimensions(file_path: str) -> tuple[int, int] | None:
     dimensions = _tiff_dimensions(file_path)
     if dimensions is not None:
@@ -69,7 +91,7 @@ def _image_dimensions(file_path: str) -> tuple[int, int] | None:
             width, height = image.size
         return (int(width), int(height)) if width > 0 and height > 0 else None
     except Exception:
-        return None
+        return _raw_dimensions(file_path)
 
 
 def estimate_preview_memory(file_path: str, max_edge: int, profile: str) -> PreviewMemoryEstimate:

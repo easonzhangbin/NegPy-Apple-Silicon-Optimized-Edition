@@ -177,10 +177,20 @@ def check_reference(reference: ImageBuffer, gain: np.ndarray) -> Evenness:
     return result._replace(clipped=_is_clipped(reference.astype(np.float32)))
 
 
-def self_corrected(reference: np.ndarray, gain: np.ndarray) -> np.ndarray:
+def scaled_gain(gain: np.ndarray, strength: float, luminance: float = 1.0, color: float = 1.0) -> np.ndarray:
+    if luminance == 1.0 and color == 1.0:
+        return gain if strength == 1.0 else np.power(gain, strength)
+    logarithm = np.log(np.maximum(gain, 1e-8))
+    common = logarithm.mean(axis=2, keepdims=True)
+    return np.exp(strength * (luminance * common + color * (logarithm - common))).astype(np.float32)
+
+
+def self_corrected(
+    reference: np.ndarray, gain: np.ndarray, strength: float = 1.0, luminance: float = 1.0, color: float = 1.0
+) -> np.ndarray:
     if gain.shape[:2] != reference.shape[:2]:
         gain = cv2.resize(gain, (reference.shape[1], reference.shape[0]), interpolation=cv2.INTER_LINEAR)
-    return reference.astype(np.float32) * gain
+    return reference.astype(np.float32) * scaled_gain(gain, strength, luminance, color)
 
 
 def _is_clipped(image: np.ndarray) -> bool:
@@ -208,12 +218,21 @@ def gain_token(gain: np.ndarray) -> str:
 
 def flatfield_token(config: FlatFieldConfig) -> str:
     """Identity of the active correction, folded into the render source hash. Empty when inactive."""
-    if not config.apply or not config.profile_id:
+    if (
+        not config.apply
+        or not config.profile_id
+        or config.flatfield_strength == 0.0
+        or (config.flatfield_luminance == 0.0 and config.flatfield_color == 0.0)
+    ):
         return ""
     entry = _resolve(config.profile_id)
     if entry is None:
         return ""
-    return f"|ff:{config.profile_id}:{entry.token}" + ("" if entry.sensor_layout else ":ref")
+    token = f"|ff:{config.profile_id}:{entry.token}" + ("" if entry.sensor_layout else ":ref")
+    token = token if config.flatfield_strength == 1.0 else f"{token}:s{config.flatfield_strength!r}"
+    if config.flatfield_luminance != 1.0 or config.flatfield_color != 1.0:
+        token += f":l{config.flatfield_luminance!r}:c{config.flatfield_color!r}"
+    return token
 
 
 def to_sensor_layout(image: np.ndarray, orientation: Optional[int]) -> np.ndarray:
@@ -231,7 +250,12 @@ def apply_flatfield(
     """Multiply the linear source by the reference gain map. No-op when inactive or unresolved.
     The sensor-layout gain takes *image*'s decode ``orientation`` first, then ``gain_crop`` cuts it
     to the part of the frame *image* holds (one half-frame); the gain is then resized to *image*."""
-    if not config.apply or not config.profile_id:
+    if (
+        not config.apply
+        or not config.profile_id
+        or config.flatfield_strength == 0.0
+        or (config.flatfield_luminance == 0.0 and config.flatfield_color == 0.0)
+    ):
         return image
     entry = _resolve(config.profile_id)
     if entry is None:
@@ -241,4 +265,4 @@ def apply_flatfield(
         gain = gain_crop(gain)
     if gain.shape[:2] != image.shape[:2]:
         gain = cv2.resize(gain, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LINEAR)
-    return (image * gain).astype(np.float32)
+    return (image * scaled_gain(gain, config.flatfield_strength, config.flatfield_luminance, config.flatfield_color)).astype(np.float32)

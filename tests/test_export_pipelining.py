@@ -307,6 +307,12 @@ def test_tiff_metadata_goes_through_the_embed_plan(tmp_path, monkeypatch) -> Non
     embed = MagicMock()
     monkeypatch.setattr("negpy.desktop.workers.export.embed_metadata", embed)
     worker, proc = _worker(encode=(b"TIFFDATA", "tiff"))
+
+    def streamed_encode(*args, **kwargs):
+        kwargs["destination"].write(b"TIFFDATA")
+        return b"", "tiff"
+
+    proc.encode_export.side_effect = streamed_encode
     preset = _preset(tmp_path, export_fmt=ExportFormat.TIFF)
     task = _task(tmp_path, "a.cr2", preset=preset, metadata_config=MetadataConfig())
 

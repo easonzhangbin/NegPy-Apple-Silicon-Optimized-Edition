@@ -468,7 +468,9 @@ class TestEffectiveMaxTextureSize(unittest.TestCase):
     def test_integrated_gpu_gets_conservative_default(self):
         app = _make_app_config(max_texture_size=None)
         gpu = SimpleNamespace(is_integrated=True)
-        self.assertEqual(effective_max_texture_size(app, gpu), INTEGRATED_GPU_TEXTURE_CAP_DEFAULT)
+        # The generic policy; Apple Silicon scales with memory (test_apple_silicon).
+        with patch("negpy.kernel.system.apple_silicon.is_apple_silicon", return_value=False):
+            self.assertEqual(effective_max_texture_size(app, gpu), INTEGRATED_GPU_TEXTURE_CAP_DEFAULT)
 
     def test_discrete_gpu_stays_uncapped(self):
         app = _make_app_config(max_texture_size=None)

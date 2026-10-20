@@ -28,7 +28,7 @@ from negpy.desktop.view.widgets.tab_header import TabHeader
 
 # Sidebar Components
 from negpy.desktop.view.sidebar.presets import PresetsSidebar
-from negpy.desktop.view.sidebar.flatfield import FlatFieldSidebar
+from negpy.desktop.view.sidebar.flatfield import FlatFieldSidebar, STRENGTH_TOOLTIP
 from negpy.desktop.view.sidebar.process import ProcessSidebar
 from negpy.desktop.view.sidebar.roll import RollAnalysisSidebar
 from negpy.desktop.view.sidebar.demosaic import DemosaicSidebar
@@ -64,6 +64,11 @@ _LENS_FIELDS = (
     "distortion_k1",
     "lens_distortion_from_metadata",
     "lens_ca_from_metadata",
+    "lens_ca_custom",
+    "lens_ca_red",
+    "lens_ca_blue",
+    "lens_ca_aspect",
+    "lens_ca_name",
 )
 _SENSOR_FIELDS = (
     "sensor_profile",
@@ -577,6 +582,9 @@ class ControlsPanel(QWidget):
             (self.presets_sidebar.save_btn, "preset_save"),
         ):
             btn.setToolTip(wrap_tooltip(tooltip_with_shortcut(btn.plain_tooltip, action_id)))
+        self.flatfield_sidebar.strength_slider.setToolTip(
+            tooltip_with_shortcut(tooltip_with_shortcut(tr(STRENGTH_TOOLTIP), "flatfield_strength_inc"), "flatfield_strength_dec")
+        )
         exp = self.tone_sidebar
         paper = self.paper_sidebar
         geo = self.geometry_sidebar
@@ -1386,6 +1394,9 @@ class ControlsPanel(QWidget):
             [
                 ff.apply != _ff.apply,
                 ff.profile_id != _ff.profile_id,
+                ff.flatfield_strength != _ff.flatfield_strength,
+                ff.flatfield_luminance != _ff.flatfield_luminance,
+                ff.flatfield_color != _ff.flatfield_color,
             ]
         )
 

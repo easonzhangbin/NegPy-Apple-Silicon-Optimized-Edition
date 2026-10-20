@@ -54,9 +54,12 @@ class TestNothingBypassesTheGate:
 class TestPlatformDefaultIsUnmoved:
     """Surfacing the setting must not silently re-decide it for anyone who never touches it."""
 
-    @pytest.mark.parametrize("platform,expected", [("win32", True), ("linux", True), ("darwin", False)])
-    def test_untouched_installs_keep_their_platform_behaviour(self, platform, expected):
-        assert default_cpu_parallel(platform) is expected
+    @pytest.mark.parametrize(
+        "platform,machine,expected",
+        [("win32", "AMD64", True), ("linux", "x86_64", True), ("darwin", "x86_64", False), ("darwin", "arm64", True)],
+    )
+    def test_untouched_installs_keep_their_platform_behaviour(self, platform, machine, expected):
+        assert default_cpu_parallel(platform, machine) is expected
         assert resolve_cpu_parallel(None, None) is None, "None must fall through to the platform default"
 
     def test_the_saved_setting_beats_the_platform_default(self):

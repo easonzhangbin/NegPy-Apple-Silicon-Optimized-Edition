@@ -87,7 +87,13 @@ def test_optics_reset_restores_both_of_its_roll_cards(qapp):
     panel.optics_section.reset_requested.emit()
 
     calls = {c.args[0]: c.kwargs for c in controller.set_roll_default.call_args_list}
-    assert calls["flatfield"] == {"apply": False, "profile_id": ""}
+    assert calls["flatfield"] == {
+        "apply": False,
+        "profile_id": "",
+        "flatfield_strength": 1.0,
+        "flatfield_luminance": 1.0,
+        "flatfield_color": 1.0,
+    }
     assert calls["lens"]["distortion_k1"] == cfg.geometry.distortion_k1
     assert "fine_rotation" not in calls["lens"]
 

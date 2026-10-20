@@ -4,6 +4,7 @@ from negpy.domain.types import ImageBuffer
 from negpy.features.flatfield.logic import apply_flatfield, flatfield_token
 from negpy.features.flatfield.models import FlatFieldConfig
 from negpy.features.lens.logic import apply_lens
+from negpy.features.lens.calibration import apply_calibrated_ca
 from negpy.features.lens.models import LensCorrections, LensMetadata
 from negpy.features.hdr.models import hdr_active
 from negpy.features.rgbscan.models import is_rgb_triplet
@@ -18,7 +19,16 @@ def metadata_lens_corrections(config: "WorkspaceConfig") -> LensCorrections:
     """Composite registrations refer to the unwarped component images."""
     if stitch_active(config.stitch) or hdr_active(config.hdr) or is_rgb_triplet(config.rgbscan):
         return LensCorrections()
-    return LensCorrections(config.geometry.lens_distortion_from_metadata, config.geometry.lens_ca_from_metadata)
+    geometry = config.geometry
+    if geometry.lens_ca_custom:
+        return LensCorrections(
+            geometry.lens_distortion_from_metadata,
+            False,
+            tuple(geometry.lens_ca_red),
+            tuple(geometry.lens_ca_blue),
+            geometry.lens_ca_aspect,
+        )
+    return LensCorrections(geometry.lens_distortion_from_metadata, geometry.lens_ca_from_metadata)
 
 
 def flatfield_source(
@@ -38,7 +48,12 @@ def flatfield_source(
 
 
 def lens_decode_token(corrections: LensCorrections, flatfield: FlatFieldConfig) -> str:
-    return f"|embedded-lens-v3-d{int(corrections.distortion)}-ca{int(corrections.ca)}" + flatfield_token(flatfield) if corrections else ""
+    if not corrections:
+        return ""
+    token = f"|embedded-lens-v3-d{int(corrections.distortion)}-ca{int(corrections.ca)}" + flatfield_token(flatfield)
+    if corrections.custom_ca:
+        token += f"|custom-ca-v1:{corrections.custom_red}:{corrections.custom_blue}:{corrections.custom_aspect}"
+    return token
 
 
 def prepare_lens_source(
@@ -49,6 +64,10 @@ def prepare_lens_source(
 ) -> ImageBuffer:
     """Flat-field in sensor positions before a lens warp moves the samples."""
     img = apply_flatfield(img, flatfield, orientation=metadata.get("orientation", 1))
+    if corrections.custom_ca and metadata.get("ir") is None:
+        img = apply_calibrated_ca(
+            img, corrections.custom_red, corrections.custom_blue, metadata.get("orientation", 1), corrections.custom_aspect
+        )
     lens = metadata.get("lens_correction")
     if isinstance(lens, LensMetadata) and metadata.get("ir") is None:
         img = apply_lens(img, lens, metadata.get("orientation", 1), corrections)

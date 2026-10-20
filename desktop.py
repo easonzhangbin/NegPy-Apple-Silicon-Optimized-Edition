@@ -21,6 +21,11 @@ def init_streams():
 
 if __name__ == "__main__":
     init_streams()
+    if "--diagnostics" in sys.argv:
+        from negpy.kernel.system.diagnostics import main as diagnostics
+
+        diagnostics(sys.argv[sys.argv.index("--diagnostics") + 1:])
+        sys.exit(0)
     from negpy.desktop.startup import prepare_user_directory
 
     if not prepare_user_directory():

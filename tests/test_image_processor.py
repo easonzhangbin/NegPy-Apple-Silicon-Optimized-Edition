@@ -1,6 +1,6 @@
 import numpy as np
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from negpy.services.rendering.image_processor import ImageProcessor
 from negpy.domain.models import WorkspaceConfig
@@ -18,12 +18,14 @@ def test_large_preview_uses_memory_bounded_gpu_tiling() -> None:
     service.engine_gpu = gpu
     service.engine_cpu.process = MagicMock(side_effect=AssertionError("CPU fallback used"))
 
-    out, metrics = service.run_pipeline(
-        np.full((4, 6, 3), 0.5, dtype=np.float32),
-        WorkspaceConfig(),
-        "large",
-        render_size_ref=6.0,
-    )
+    # The generic policy; Apple Silicon with ample unified memory is covered in test_apple_silicon.
+    with patch("negpy.services.rendering.image_processor.retain_source_tiles", return_value=False):
+        out, metrics = service.run_pipeline(
+            np.full((4, 6, 3), 0.5, dtype=np.float32),
+            WorkspaceConfig(),
+            "large",
+            render_size_ref=6.0,
+        )
 
     assert out is result
     assert metrics["path"] == "tiled"

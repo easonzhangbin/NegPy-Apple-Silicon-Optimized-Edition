@@ -619,10 +619,22 @@ ROLL_DEFAULT_FIELDS: Dict[str, tuple] = {
     # Auto Crop's on/off, driven by the Crop section alongside "autocrop". Its own card, so a
     # frame with a hand-drawn crop still takes the roll's shape but not this (holds_own_crop).
     "auto_crop": ("geometry", ("crop_from_auto",)),
-    "lens": ("geometry", ("distortion_k1", "lens_distortion_from_metadata", "lens_ca_from_metadata")),
+    "lens": (
+        "geometry",
+        (
+            "distortion_k1",
+            "lens_distortion_from_metadata",
+            "lens_ca_from_metadata",
+            "lens_ca_custom",
+            "lens_ca_red",
+            "lens_ca_blue",
+            "lens_ca_aspect",
+            "lens_ca_name",
+        ),
+    ),
     # profile_id also has a rig-global fallback, applied upstream of roll defaults, so a
     # roll that names no profile of its own still gets the active one.
-    "flatfield": ("flatfield", ("apply", "profile_id")),
+    "flatfield": ("flatfield", ("apply", "profile_id", "flatfield_strength", "flatfield_luminance", "flatfield_color")),
     # Metadata describes the roll almost by definition: one camera, one stock, one
     # development, one scanning rig. capture_frame is unique to one frame, and
     # protect_original_metadata and description_fields are export decisions, so all three

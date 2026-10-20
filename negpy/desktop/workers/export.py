@@ -1,4 +1,5 @@
 from negpy.kernel.system.i18n import tr
+from negpy.kernel.system.memory import available_system_memory_bytes
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from typing import List, Optional, Any, Union
@@ -308,6 +309,7 @@ class ExportWorker(QObject):
         finisher = ThreadPoolExecutor(max_workers=1)
         prefetcher = ThreadPoolExecutor(max_workers=1)
         pending: Optional[Future] = None
+        prefetch_pending: Optional[Future] = None
 
         def _drain(fut: Future) -> None:
             try:
@@ -331,10 +333,16 @@ class ExportWorker(QObject):
                         task = replace(task, source_exif=read_exif_from_file(task.file_info["path"]))
 
                     nxt = tasks[i + 1] if i + 1 < len(tasks) else None
-                    prefetch_next = nxt is not None and nxt.diptych is None
+                    available_ram = available_system_memory_bytes()
+                    pipeline_allowed = available_ram is not None and available_ram >= 2 * 1024**3
+                    prefetch_next = nxt is not None and nxt.diptych is None and pipeline_allowed
+                    prefetch_next = prefetch_next and (prefetch_pending is None or prefetch_pending.done())
+                    if not pipeline_allowed and pending is not None:
+                        _drain(pending)
+                        pending = None
                     # Not on the first task: its own prepare would queue behind this on the gate.
                     if prefetch_next and i > 0:
-                        self._submit_prefetch(prefetcher, nxt)
+                        prefetch_pending = self._submit_prefetch(prefetcher, nxt)
 
                     # TIFF/PNG take the metadata at the first encode; the post-hoc
                     # rewrite re-compresses the full-res file.
@@ -373,7 +381,7 @@ class ExportWorker(QObject):
                         diptych=task.diptych,
                     )
                     if prefetch_next and i == 0:
-                        self._submit_prefetch(prefetcher, nxt)
+                        prefetch_pending = self._submit_prefetch(prefetcher, nxt)
 
                     if buffer is not None and _looks_border_crushed(buffer, task):
                         border_crushed += 1
@@ -406,13 +414,13 @@ class ExportWorker(QObject):
             self.error.emit(str(e))
             self.finished.emit()
         finally:
-            prefetcher.shutdown(wait=True)
+            prefetcher.shutdown(wait=True, cancel_futures=True)
             finisher.shutdown(wait=True)
             self._processor.cleanup(release_source_cache=True, collect=False)
             gc.collect()
 
-    def _submit_prefetch(self, prefetcher: ThreadPoolExecutor, nxt: ExportTask) -> None:
-        prefetcher.submit(
+    def _submit_prefetch(self, prefetcher: ThreadPoolExecutor, nxt: ExportTask) -> Future:
+        return prefetcher.submit(
             self._processor.prefetch_export_source,
             nxt.file_info["path"],
             nxt.params,
@@ -428,7 +436,8 @@ class ExportWorker(QObject):
         """Encode + metadata + atomic write for one rendered frame, on the finisher
         thread. Returns an error message, or None on success."""
         resolution = _export_resolution(task)
-        bits, status = self._processor.encode_export(
+        stream_tiff = task.export_settings.export_fmt == ExportFormat.TIFF and (task.metadata_config is None or embed_plan is not None)
+        bits, status = (b"", "tiff") if stream_tiff else self._processor.encode_export(
             buffer,
             task.export_settings,
             color_space,
@@ -436,10 +445,10 @@ class ExportWorker(QObject):
             embed_plan=embed_plan,
             resolution=resolution,
         )
-        if not bits:
+        if not stream_tiff and not bits:
             return status
 
-        if task.metadata_config is not None and embed_plan is None:
+        if not stream_tiff and task.metadata_config is not None and embed_plan is None:
             if task.metadata_config.protect_original_metadata:
                 bits = preserve_source_metadata(
                     bits,
@@ -468,7 +477,15 @@ class ExportWorker(QObject):
         try:
             with tempfile.NamedTemporaryFile(dir=out_dir, delete=False, suffix=".part") as tmp:
                 tmp_path = tmp.name
-                tmp.write(bits)
+                if stream_tiff:
+                    encoded, status = self._processor.encode_export(
+                        buffer, task.export_settings, color_space, task.working_color_space,
+                        embed_plan=embed_plan, resolution=resolution, destination=tmp,
+                    )
+                    if encoded is None:
+                        raise RuntimeError(status)
+                else:
+                    tmp.write(bits)
             os.replace(tmp_path, path)
             # The write above stamps the filesystem dates with the export time; the EXIF
             # dates are already right. Tools that sort by file date read the former.

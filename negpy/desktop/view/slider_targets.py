@@ -9,6 +9,9 @@ from collections.abc import Callable
 from operator import attrgetter
 
 SLIDER_ATTRS: dict[str, str] = {
+    "flatfield_luminance": "flatfield_sidebar.luminance_slider",
+    "flatfield_color": "flatfield_sidebar.color_slider",
+    "flatfield_strength": "flatfield_sidebar.strength_slider",
     "cyan": "color_sidebar.cyan_slider",
     "magenta": "color_sidebar.magenta_slider",
     "yellow": "color_sidebar.yellow_slider",

@@ -8,7 +8,7 @@ import subprocess
 import PyInstaller.__main__
 
 # Define the application name
-APP_NAME = "NegPy"
+APP_NAME = os.environ.get("NEGPY_APP_NAME", "NegPy")
 
 # Read version
 VERSION = "dev"
@@ -115,6 +115,7 @@ params = [
     "--add-data=crosstalk:crosstalk",
     "--add-data=gear:gear",
     "--add-data=VERSION:.",
+    "--add-data=BUILD_VARIANT.json:.",
     # The panel guides (section_help_dialog.py) render slices of it at runtime.
     "--add-data=docs/USER_GUIDE.md:docs",
 ]
@@ -137,10 +138,14 @@ def collect_gphoto2_plugins() -> None:
     try:
         import gphoto2
     except ImportError:
+        if os.environ.get("NEGPY_REQUIRE_CAMERA") == "1":
+            raise RuntimeError("Camera support is required; run uv sync --group camera")
         print("gphoto2 not installed — packaging without camera scanning")
         return
     plugins = os.path.join(os.path.dirname(gphoto2.__file__), "libgphoto2")
     if not os.path.isdir(plugins):
+        if os.environ.get("NEGPY_REQUIRE_CAMERA") == "1":
+            raise RuntimeError("Camera driver plugins are missing")
         print(f"WARNING: gphoto2 plugins not found at {plugins} — camera scanning will not work")
         return
     params.append(f"--add-data={plugins}:gphoto2/libgphoto2")
@@ -162,6 +167,7 @@ elif is_macos:
 
     macos_target_arch = get_macos_target_arch()
     params.append(f"--target-arch={macos_target_arch}")
+    params.append("--osx-bundle-identifier=org.negpy.zh-cn.apple-silicon")
 
 
 def package_linux():
@@ -560,7 +566,8 @@ def build():
         fix_lcms2_dylib_collision()
         check_bundled_dylib_collisions()
         codesign_macos_app()
-        package_macos()
+        if os.environ.get("NEGPY_SKIP_PACKAGE") != "1":
+            package_macos()
 
 
 if __name__ == "__main__":

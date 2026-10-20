@@ -22,10 +22,10 @@ all: format lint type test
 
 .PHONY: translations translations-check
 translations:
-	@$(UV) python scripts/extract_translations.py
+	@$(UV) python -m scripts.extract_translations
 
 translations-check:
-	@$(UV) python scripts/extract_translations.py --check
+	@$(UV) python -m scripts.extract_translations --check
 
 # Install dependencies
 .PHONY: install

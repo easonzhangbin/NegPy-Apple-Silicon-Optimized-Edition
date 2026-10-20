@@ -24,7 +24,7 @@ def _get_luminance_jit(img: np.ndarray) -> np.ndarray:
     return res
 
 
-@njit(cache=True, fastmath=True)
+@parallel_njit(cache=True, fastmath=True)
 def _to_uint16_jit(img: np.ndarray) -> np.ndarray:
     """
     Scale to uint16 (rounds to nearest, clips & handles NaNs).
@@ -37,7 +37,7 @@ def _to_uint16_jit(img: np.ndarray) -> np.ndarray:
     img_flat = img.reshape(-1)
     res_flat = res.reshape(-1)
 
-    for i in range(len(img_flat)):
+    for i in prange(len(img_flat)):
         val = img_flat[i]
         if np.isnan(val):
             v = 0.0
@@ -53,7 +53,7 @@ def _to_uint16_jit(img: np.ndarray) -> np.ndarray:
     return res
 
 
-@njit(cache=True, fastmath=True)
+@parallel_njit(cache=True, fastmath=True)
 def _to_uint8_jit(img: np.ndarray) -> np.ndarray:
     """
     Scale to uint8 (rounds to nearest, clips & handles NaNs). See _to_uint16_jit.
@@ -62,7 +62,7 @@ def _to_uint8_jit(img: np.ndarray) -> np.ndarray:
     img_flat = img.reshape(-1)
     res_flat = res.reshape(-1)
 
-    for i in range(len(img_flat)):
+    for i in prange(len(img_flat)):
         val = img_flat[i]
         if np.isnan(val):
             v = 0.0
@@ -78,7 +78,7 @@ def _to_uint8_jit(img: np.ndarray) -> np.ndarray:
     return res
 
 
-@njit(cache=True, fastmath=True)
+@parallel_njit(cache=True, fastmath=True)
 def uint8_to_float32(img: np.ndarray) -> np.ndarray:
     """
     Fast JIT conversion from uint8 to float32 [0.0, 1.0].
@@ -86,38 +86,38 @@ def uint8_to_float32(img: np.ndarray) -> np.ndarray:
     h, w, c = img.shape
     res = np.empty((h, w, c), dtype=np.float32)
     inv_255 = 1.0 / 255.0
-    for y in range(h):
+    for y in prange(h):
         for x in range(w):
             for ch in range(c):
                 res[y, x, ch] = np.float32(img[y, x, ch]) * inv_255
     return res
 
 
-@njit(cache=True)
+@parallel_njit(cache=True)
 def rgb_to_rgba_into(src: np.ndarray, dst: np.ndarray) -> None:
     """Copies the three colour planes of ``src`` into the RGBA ``dst``; alpha is left as is.
     numpy cannot vectorise a 3-of-4 strided copy, so a texture upload spent longer here than
     on the GPU."""
     h, w = src.shape[0], src.shape[1]
-    for y in range(h):
+    for y in prange(h):
         for x in range(w):
             dst[y, x, 0] = src[y, x, 0]
             dst[y, x, 1] = src[y, x, 1]
             dst[y, x, 2] = src[y, x, 2]
 
 
-@njit(cache=True)
+@parallel_njit(cache=True)
 def rgba_to_rgb_into(src: np.ndarray, dst: np.ndarray, oy: int, ox: int) -> None:
     """Writes the RGB of ``src[oy:oy+h, ox:ox+w]`` into the (h, w, 3) ``dst``."""
     h, w = dst.shape[0], dst.shape[1]
-    for y in range(h):
+    for y in prange(h):
         for x in range(w):
             dst[y, x, 0] = src[oy + y, ox + x, 0]
             dst[y, x, 1] = src[oy + y, ox + x, 1]
             dst[y, x, 2] = src[oy + y, ox + x, 2]
 
 
-@njit(cache=True, fastmath=True)
+@parallel_njit(cache=True, fastmath=True)
 def uint16_to_float32(img: np.ndarray) -> np.ndarray:
     """
     Fast JIT conversion from uint16 to float32 [0.0, 1.0].
@@ -125,7 +125,7 @@ def uint16_to_float32(img: np.ndarray) -> np.ndarray:
     h, w, c = img.shape
     res = np.empty((h, w, c), dtype=np.float32)
     inv_65535 = 1.0 / 65535.0
-    for y in range(h):
+    for y in prange(h):
         for x in range(w):
             for ch in range(c):
                 res[y, x, ch] = np.float32(img[y, x, ch]) * inv_65535

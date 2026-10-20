@@ -12,6 +12,8 @@ from functools import lru_cache
 from PIL import Image, ImageCms
 from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
 from negpy.kernel.system.logging import get_logger
+from negpy.kernel.system.apple_silicon import retain_source_tiles
+from negpy.kernel.system.work_budget import bounded_decode, background_decode, submit_decode
 from negpy.kernel.system.config import APP_CONFIG, render_scale_factor
 from negpy.domain.types import ImageBuffer
 from negpy.domain.models import (
@@ -895,6 +897,7 @@ class ImageProcessor:
         if prefer_gpu and self.engine_gpu:
             try:
                 if needs_tiling:
+                    keep_tiles = retain_source_tiles(img.nbytes)
                     processed, gpu_metrics = self.engine_gpu.process(
                         img,
                         settings,
@@ -905,7 +908,11 @@ class ImageProcessor:
                         cam_xyz=cam_xyz,
                         camera_wb=camera_wb,
                         film_base=film_base,
-                        memory_bounded=True,
+                        # Bounded tiles (1024 px, no readback overlap, pool released per frame)
+                        # protect a tight shared-VRAM budget. Apple Silicon with ample unified
+                        # memory renders an HQ preview with the export's own tiling instead.
+                        memory_bounded=not keep_tiles,
+                        reuse_source_tiles=keep_tiles,
                         render_size_ref=render_size_ref,
                     )
                 else:
@@ -967,6 +974,7 @@ class ImageProcessor:
             return Image.fromarray(float_to_uint8(buffer))
         raise ValueError(f"Unsupported bit depth: {bit_depth}")
 
+    @bounded_decode
     def _decode_sensor_rgb(
         self,
         file_path: str,
@@ -1150,7 +1158,7 @@ class ImageProcessor:
                     raise FileNotFoundError(f"RGB-scan {label} exposure not found: {path}")
             siblings = [p for p in dict.fromkeys((rgbcfg.green_path, rgbcfg.blue_path)) if p != file_path]
             with ThreadPoolExecutor(max_workers=1 + len(siblings)) as pool:
-                primary_future = pool.submit(
+                primary_future = submit_decode(pool,
                     self._decode_sensor_rgb,
                     file_path,
                     linear_raw,
@@ -1160,22 +1168,14 @@ class ImageProcessor:
                     positive_source=params.process.positive_source,
                     highlight_mode=highlight_mode,
                 )
-                decoded = dict(
-                    zip(
-                        siblings,
-                        pool.map(
-                            lambda p: self._decode_sensor_rgb(
-                                p,
-                                linear_raw,
-                                wb_override=_NEUTRAL_WB,
-                                demosaic=demosaic,
-                                positive_source=params.process.positive_source,
-                                highlight_mode=highlight_mode,
-                            )[0],
-                            siblings,
-                        ),
+                sibling_futures = {
+                    path: submit_decode(
+                        pool, self._decode_sensor_rgb, path, linear_raw, wb_override=_NEUTRAL_WB,
+                        demosaic=demosaic, positive_source=params.process.positive_source, highlight_mode=highlight_mode,
                     )
-                )
+                    for path in siblings
+                }
+                decoded = {path: future.result()[0] for path, future in sibling_futures.items()}
                 rgb, metadata = primary_future.result()
         else:
             rgb, metadata = self._decode_sensor_rgb(
@@ -1381,6 +1381,7 @@ class ImageProcessor:
         export_token = detect_key + (hair_bake_token(orig_ret) if hair_masks else "")
         return f32_buffer, source_cs, export_token
 
+    @background_decode
     def prefetch_export_source(
         self,
         file_path: str,
@@ -1595,12 +1596,13 @@ class ImageProcessor:
         working_color_space: str = WORKING_COLOR_SPACE,
         embed_plan: Optional[tuple] = None,
         resolution: Any = _DERIVE_RESOLUTION,
+        destination: Any = None,
     ) -> Tuple[Optional[bytes], str]:
         """Encode a rendered export buffer to file bytes; (bytes, format) or (None, error).
         Touches no processor state, so it can run on the finisher thread."""
         try:
             return self._encode_export(
-                buffer, export_settings, color_space, working_color_space, embed_plan=embed_plan, resolution=resolution
+                buffer, export_settings, color_space, working_color_space, embed_plan=embed_plan, resolution=resolution, destination=destination
             )
         except Exception as e:
             logger.error(f"Export encode failed: {e}")
@@ -1656,6 +1658,7 @@ class ImageProcessor:
         working_color_space: str = WORKING_COLOR_SPACE,
         embed_plan: Optional[tuple] = None,
         resolution: Any = _DERIVE_RESOLUTION,
+        destination: Any = None,
     ) -> Tuple[bytes, str]:
         """Encodes a processed float buffer to the target format's file bytes.
 
@@ -1700,6 +1703,7 @@ class ImageProcessor:
                     icc=icc_bytes,
                     resolution=_tiff_resolution(resolution, export_settings),
                     compression=export_settings.tiff_compression,
+                    destination=destination,
                     **meta_kwargs,
                 ),
                 "tiff",

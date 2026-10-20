@@ -40,7 +40,8 @@ def test_serial_and_parallel_variants_never_share_a_cache_file():
 
 
 def test_platform_policy():
-    assert default_cpu_parallel("darwin") is False
+    assert default_cpu_parallel("darwin", "x86_64") is False
+    assert default_cpu_parallel("darwin", "arm64") is True
     assert default_cpu_parallel("win32") is True
     assert default_cpu_parallel("linux") is True
 

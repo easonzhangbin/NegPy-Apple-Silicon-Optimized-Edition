@@ -1,0 +1,7 @@
+{
+  "base_version": "0.65.0",
+  "revision": "r8",
+  "variant": "zh_CN-AppleSilicon",
+  "upstream_translation_base": "0dc536a8",
+  "upstream_self_install": false
+}

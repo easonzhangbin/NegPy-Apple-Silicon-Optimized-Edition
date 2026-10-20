@@ -4,6 +4,7 @@ from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import numpy as np
 
+from negpy.features.flatfield.analysis import ReferenceQuality, reference_quality
 from negpy.features.flatfield.logic import Evenness, GainEntry, check_copy, check_reference, compute_gain, gain_token, to_sensor_layout
 from negpy.kernel.system.config import APP_CONFIG
 from negpy.kernel.system.logging import get_logger
@@ -28,12 +29,14 @@ class StoredCheck(NamedTuple):
     reference: Optional[np.ndarray]  # the reference's check copy; None on a profile baked before checks
     check: Optional[Evenness]
     sensor_layout: bool = True
+    quality: Optional[ReferenceQuality] = None
 
 
 class Baked(NamedTuple):
     gain: np.ndarray
     check: Evenness
     reference: np.ndarray  # check copy, stored so the profile can be checked without its source
+    quality: Optional[ReferenceQuality] = None
 
 
 class FlatFieldProfiles:
@@ -57,7 +60,7 @@ class FlatFieldProfiles:
             reference, _, meta = PreviewManager().load_linear_preview(reference_path, use_camera_wb=False, full_resolution=False)
             reference = to_sensor_layout(reference, meta.get("orientation", 1))
             gain = compute_gain(reference)
-            return Baked(gain, check_reference(reference, gain), check_copy(reference))
+            return Baked(gain, check_reference(reference, gain), check_copy(reference), reference_quality(reference, gain))
         except Exception:
             logger.exception("Flat-field: failed to decode reference %s", reference_path)
             return None
@@ -72,6 +75,7 @@ class FlatFieldProfiles:
         source: str,
         reference: Optional[np.ndarray] = None,
         check: Optional[Evenness] = None,
+        quality: Optional[ReferenceQuality] = None,
     ) -> None:
         os.makedirs(APP_CONFIG.flatfield_dir, exist_ok=True)
         extra: Dict[str, np.ndarray] = {}
@@ -80,6 +84,8 @@ class FlatFieldProfiles:
             extra["reference"] = reference.astype(np.float16)
         if check is not None:
             extra["check"] = np.array([check.low, check.high, check.color, float(check.clipped)], dtype=np.float64)
+        if quality is not None:
+            extra["quality"] = np.asarray(quality, np.float64)
         np.savez_compressed(
             FlatFieldProfiles._path_for_id(profile_id),
             gain=gain.astype(np.float32),
@@ -119,7 +125,14 @@ class FlatFieldProfiles:
             return None
         profile_id = uuid.uuid4().hex
         FlatFieldProfiles._write(
-            profile_id, baked.gain, name=name, k1=k1, source=reference_path, reference=baked.reference, check=baked.check
+            profile_id,
+            baked.gain,
+            name=name,
+            k1=k1,
+            source=reference_path,
+            reference=baked.reference,
+            check=baked.check,
+            quality=baked.quality,
         )
         return profile_id, baked.check
 
@@ -133,7 +146,7 @@ class FlatFieldProfiles:
     @staticmethod
     def load_check(profile_id: str) -> Optional[StoredCheck]:
         """The gain with the stored reference copy and self-check, for Check Flat Field."""
-        data = FlatFieldProfiles._read(profile_id, ("gain", "reference", "check", "layout"))
+        data = FlatFieldProfiles._read(profile_id, ("gain", "reference", "check", "layout", "quality"))
         if data is None or "gain" not in data:
             return None
         reference = data["reference"].astype(np.float32) if "reference" in data else None
@@ -141,7 +154,8 @@ class FlatFieldProfiles:
         if "check" in data:
             low, high, color, clipped = (float(v) for v in data["check"])
             check = Evenness(low, high, color, bool(clipped))
-        return StoredCheck(np.ascontiguousarray(data["gain"], dtype=np.float32), reference, check, "layout" in data)
+        quality = ReferenceQuality(*(float(value) for value in data["quality"])) if "quality" in data else None
+        return StoredCheck(np.ascontiguousarray(data["gain"], dtype=np.float32), reference, check, "layout" in data, quality)
 
     @staticmethod
     def load_gain(profile_id: str) -> Optional[GainEntry]:

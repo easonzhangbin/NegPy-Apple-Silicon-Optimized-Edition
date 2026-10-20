@@ -10,9 +10,16 @@ import numpy as np
 class LensCorrections:
     distortion: bool = False
     ca: bool = False
+    custom_red: tuple[float, float] = (0.0, 0.0)
+    custom_blue: tuple[float, float] = (0.0, 0.0)
+    custom_aspect: float = 0.0
+
+    @property
+    def custom_ca(self) -> bool:
+        return any(self.custom_red) or any(self.custom_blue)
 
     def __bool__(self) -> bool:
-        return self.distortion or self.ca
+        return self.distortion or self.ca or self.custom_ca
 
 
 class LensWarp(Protocol):

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, replace
+import math
 from enum import StrEnum
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -113,6 +114,11 @@ class AutocropMode(StrEnum):
 class GeometryConfig:
     lens_distortion_from_metadata: bool = False
     lens_ca_from_metadata: bool = False
+    lens_ca_custom: bool = False
+    lens_ca_red: Tuple[float, float] = (0.0, 0.0)
+    lens_ca_blue: Tuple[float, float] = (0.0, 0.0)
+    lens_ca_aspect: float = 0.0
+    lens_ca_name: str = ""
     rotation: int = 0
     fine_rotation: float = 0.0
     flip_horizontal: bool = False
@@ -156,6 +162,28 @@ class GeometryConfig:
         """Ensure a JSON-loaded list is converted back to a tuple, keeping the
         frozen dataclass hashable for pipeline cache keys. Enum fields coerce so a
         retired or hand-edited saved value degrades to the default, not a load failure."""
+        valid = True
+        for name in ("lens_ca_red", "lens_ca_blue"):
+            try:
+                values = tuple(float(value) for value in getattr(self, name))
+                if len(values) != 2 or any(not math.isfinite(value) or abs(value) > 0.02 for value in values):
+                    raise ValueError("invalid coefficients")
+            except (ValueError, TypeError):
+                values = (0.0, 0.0)
+                valid = False
+            object.__setattr__(self, name, values)
+        try:
+            aspect = float(self.lens_ca_aspect)
+            if not math.isfinite(aspect) or aspect < 0:
+                raise ValueError("invalid aspect")
+        except (ValueError, TypeError):
+            aspect = 0.0
+            valid = False
+        object.__setattr__(self, "lens_ca_aspect", aspect)
+        if not valid or (self.lens_ca_custom and aspect <= 0):
+            object.__setattr__(self, "lens_ca_custom", False)
+        if self.lens_ca_custom:
+            object.__setattr__(self, "lens_ca_from_metadata", False)
         if self.lens_distortion_from_metadata:
             object.__setattr__(self, "distortion_k1", 0.0)
         if self.crop_rect is not None:

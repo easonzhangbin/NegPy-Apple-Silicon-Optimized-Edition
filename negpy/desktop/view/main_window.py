@@ -433,9 +433,7 @@ class MainWindow(QMainWindow):
         dlg = ScanSetupDialog(self, repo.get_global_setting("scan_setup"), repo=repo)
         # Cancel leaves scan_setup unset: an unanswered wizard is not an answer, so it asks again.
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            choice = dlg.choice()
-            self.controller.apply_scan_setup(**choice)
-            self.right_panel.show_scan_source("camera" if choice["capture"] == "camera" else "film")
+            self.controller.apply_scan_setup(**dlg.choice())
 
     def _restore_default_dock_state(self) -> None:
         """Restore both docks to the snapshot taken at startup (home edge + width)."""

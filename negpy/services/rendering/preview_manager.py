@@ -1,6 +1,8 @@
 import os
 import time
 from collections.abc import Callable
+from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional, Sequence, Tuple
 
 import cv2
@@ -23,7 +25,9 @@ from negpy.infrastructure.loaders.helpers import (
 from negpy.infrastructure.gpu.device import GPUDevice
 from negpy.kernel.image.logic import apply_exif_orientation, ensure_rgb, uint16_to_float32, working_oetf_decode, working_oetf_encode
 from negpy.kernel.image.validation import ensure_image
+from negpy.kernel.system.apple_silicon import is_apple_silicon
 from negpy.kernel.system.config import APP_CONFIG
+from negpy.kernel.system.work_budget import background_decode, coordinated_decode, submit_decode
 from negpy.kernel.system.override import effective_max_texture_size
 from negpy.features.flatfield.logic import apply_flatfield, flatfield_token
 from negpy.features.flatfield.models import FlatFieldConfig
@@ -44,6 +48,10 @@ from negpy.services.rendering.preview_cache import PreviewBufferCache, PreviewCa
 from negpy.services.rendering.prefetch_policy import decide_prefetch
 
 logger = get_logger(__name__)
+
+# Long edge passed to the prefetch memory estimate for a full-resolution warm: the largest
+# HQ texture, so the estimate keeps the whole decode instead of the preview downsample.
+_FULL_RES_ESTIMATE_EDGE = 16384
 
 
 def _file_revision(path: str) -> str:
@@ -123,6 +131,7 @@ class PreviewManager:
     def __init__(self) -> None:
         self._cache = PreviewBufferCache(APP_CONFIG)
 
+    @background_decode
     def prefetch_linear_preview(
         self,
         file_path: str,
@@ -130,6 +139,7 @@ class PreviewManager:
         *,
         use_camera_wb: bool,
         file_hash: str | None,
+        full_resolution: bool = False,
         half_slice: tuple[int, float, tuple[float, float, float, float] | None, float, str] | None = None,
         demosaic: str = DemosaicMode.AUTO,
         positive_source: bool = False,
@@ -141,14 +151,17 @@ class PreviewManager:
         lens_corrections: LensCorrections = LensCorrections(),
         lens_flatfield: FlatFieldConfig = FlatFieldConfig(),
     ) -> bool:
-        """Warm one preview when its cache and system-memory budgets both admit it."""
+        """Warm one preview when its cache and system-memory budgets both admit it.
+
+        ``full_resolution`` warms the entry an HQ-preview load reads (Apple Silicon with
+        ample unified memory; see apple_silicon.full_resolution_prefetch)."""
         if not file_hash:
             return False
         key = _linear_preview_key(
             file_hash,
             color_space=color_space,
             use_camera_wb=use_camera_wb,
-            full_resolution=False,
+            full_resolution=full_resolution,
             half_slice=half_slice,
             demosaic=demosaic,
             positive_source=positive_source,
@@ -162,16 +175,20 @@ class PreviewManager:
         if should_cancel is not None and should_cancel():
             raise InterruptedError("preview load cancelled")
 
-        estimate = loader_factory.estimate_linear_preview_prefetch_memory(file_path, APP_CONFIG.preview_render_size)
+        # A full-resolution warm keeps the whole decode: estimate it without the preview downsample.
+        max_edge = _FULL_RES_ESTIMATE_EDGE if full_resolution else APP_CONFIG.preview_render_size
+        estimate = loader_factory.estimate_linear_preview_prefetch_memory(file_path, max_edge)
 
         protected_hashes = frozenset(protected_file_hashes)
+        available_ram = available_system_memory_bytes()
+        self._cache.trim_for_memory(available_ram, protected_hashes)
         decision = decide_prefetch(
             estimate,
             self._cache.usage(
                 protected_file_hashes=protected_hashes,
                 preserve_full_resolution=True,
             ),
-            available_system_memory_bytes(),
+            available_ram,
             integrated_gpu=integrated_gpu,
         )
         if not decision.allowed:
@@ -191,7 +208,7 @@ class PreviewManager:
             file_path,
             color_space,
             use_camera_wb=use_camera_wb,
-            full_resolution=False,
+            full_resolution=full_resolution,
             file_hash=file_hash,
             half_slice=half_slice,
             demosaic=demosaic,
@@ -283,6 +300,7 @@ class PreviewManager:
         logger.debug("preview _try_splash_from_open_raw ok %.3fs for %s", time.perf_counter() - t0, file_path)
         return ensure_image(arr), full_dims
 
+    @coordinated_decode
     def _load_from_open_raw(
         self,
         raw: Any,
@@ -726,6 +744,8 @@ class PreviewManager:
         file_hash: str | None = None,
         demosaic: str = DemosaicMode.AUTO,
         should_cancel: Optional[Callable[[], bool]] = None,
+        cache_protected_file_hashes: frozenset[str] = frozenset(),
+        cache_preserve_full_resolution: bool = False,
     ) -> Tuple[ImageBuffer, Dimensions, dict]:
         """Merge a narrowband R/G/B triplet into one linear preview: red channel from the
         red shot, green from green, blue from blue. The merged result is cached, so re-visiting
@@ -754,15 +774,33 @@ class PreviewManager:
             if hit is not None:
                 return hit  # cache hit — caller must not mutate this buffer
 
-        red_out, dims, meta = self.load_linear_preview(
-            red_path, color_space, False, full_resolution, file_hash, demosaic=demosaic, should_cancel=should_cancel
-        )
-        green_out, _, _ = self.load_linear_preview(
-            green_path, color_space, False, full_resolution, None, demosaic=demosaic, should_cancel=should_cancel
-        )
-        blue_out, _, _ = self.load_linear_preview(
-            blue_path, color_space, False, full_resolution, None, demosaic=demosaic, should_cancel=should_cancel
-        )
+        def _decode(path: str, primary_hash: str | None) -> Tuple[ImageBuffer, Dimensions, dict]:
+            return self.load_linear_preview(
+                path,
+                color_space,
+                False,
+                full_resolution,
+                primary_hash,
+                demosaic=demosaic,
+                should_cancel=should_cancel,
+                cache_protected_file_hashes=cache_protected_file_hashes,
+                cache_preserve_full_resolution=cache_preserve_full_resolution,
+            )
+
+        if is_apple_silicon():
+            # The three exposures are independent decodes and LibRaw releases the GIL, so on
+            # Apple Silicon they run side by side, as the triplet export already does.
+            with ThreadPoolExecutor(max_workers=3, thread_name_prefix="rgb-decode") as pool:
+                futures = [
+                    submit_decode(pool, _decode, red_path, file_hash),
+                    submit_decode(pool, _decode, green_path, None),
+                    submit_decode(pool, _decode, blue_path, None),
+                ]
+                (red_out, dims, meta), (green_out, _, _), (blue_out, _, _) = (f.result() for f in futures)
+        else:
+            red_out, dims, meta = _decode(red_path, file_hash)
+            green_out, _, _ = _decode(green_path, None)
+            blue_out, _, _ = _decode(blue_path, None)
 
         red = np.asarray(red_out, dtype=np.float32)
 
@@ -781,8 +819,86 @@ class PreviewManager:
         meta["camera_wb"] = None
         if merged_key is not None:
             # A freshly assembled buffer: the cache and the caller alias it, read-only.
-            self._cache.put(merged_key, out, dims, dict(meta))
+            self._cache.put(
+                merged_key,
+                out,
+                dims,
+                dict(meta),
+                protected_file_hashes=cache_protected_file_hashes,
+                preserve_full_resolution=cache_preserve_full_resolution,
+            )
         return out, dims, meta
+
+    @background_decode
+    def prefetch_linear_preview_rgb(
+        self,
+        red_path: str,
+        rgbscan: RgbScanConfig,
+        color_space: str,
+        *,
+        use_camera_wb: bool,
+        file_hash: str | None,
+        full_resolution: bool = False,
+        demosaic: str = DemosaicMode.AUTO,
+        integrated_gpu: bool = False,
+        protected_file_hashes: tuple[str, ...] = (),
+        should_cancel: Optional[Callable[[], bool]] = None,
+    ) -> bool:
+        """Warm an RGB-scan triplet neighbour: the exact merged entry ``load_linear_preview_rgb``
+        reads when the user steps onto it (Apple Silicon with ample unified memory; see
+        apple_silicon.ample_unified_memory). Same budget checks as a single-file warm, with the
+        estimate scaled to three decodes held at once plus the merged buffer."""
+        token = rgbscan_token(rgbscan)
+        if not file_hash or not token:
+            return False
+        merged_key = PreviewCacheKey(
+            file_hash=f"rgb|{file_hash}|{token}",
+            use_camera_wb=use_camera_wb,
+            workspace_color_space=color_space,
+            full_resolution=full_resolution,
+            demosaic=demosaic,
+        )
+        if self._cache.contains(merged_key):
+            return True
+        if should_cancel is not None and should_cancel():
+            raise InterruptedError("preview load cancelled")
+
+        max_edge = _FULL_RES_ESTIMATE_EDGE if full_resolution else APP_CONFIG.preview_render_size
+        one = loader_factory.estimate_linear_preview_prefetch_memory(red_path, max_edge)
+        # Kept: the red exposure's own entry and the merged frame. Transient: all three
+        # decodes in flight plus the green/blue buffers before the merge.
+        estimate = replace(
+            one,
+            cached_bytes=one.cached_bytes * 2,
+            temporary_bytes=one.temporary_bytes * 3 + one.cached_bytes * 2,
+        )
+        protected_hashes = frozenset(protected_file_hashes)
+        available_ram = available_system_memory_bytes()
+        self._cache.trim_for_memory(available_ram, protected_hashes)
+        decision = decide_prefetch(
+            estimate,
+            self._cache.usage(protected_file_hashes=protected_hashes, preserve_full_resolution=True),
+            available_ram,
+            integrated_gpu=integrated_gpu,
+        )
+        if not decision.allowed:
+            logger.debug("rgb prefetch skip: %s %s", decision.reason, red_path)
+            return False
+        if should_cancel is not None and should_cancel():
+            raise InterruptedError("preview load cancelled")
+        self.load_linear_preview_rgb(
+            red_path,
+            rgbscan,
+            color_space,
+            use_camera_wb=use_camera_wb,
+            full_resolution=full_resolution,
+            file_hash=file_hash,
+            demosaic=demosaic,
+            should_cancel=should_cancel,
+            cache_protected_file_hashes=protected_hashes,
+            cache_preserve_full_resolution=True,
+        )
+        return True
 
     def load_linear_preview_hdr(
         self,
@@ -897,6 +1013,9 @@ class PreviewManager:
         full_resolution: bool = False,
         file_hash: str | None = None,
         flatfield_profile_id: str = "",
+        flatfield_strength: float = 1.0,
+        flatfield_luminance: float = 1.0,
+        flatfield_color: float = 1.0,
         demosaic: str = DemosaicMode.AUTO,
         should_cancel: Optional[Callable[[], bool]] = None,
         highlight_mode: int = 0,
@@ -909,7 +1028,13 @@ class PreviewManager:
         Returned dims are the full-resolution canvas, matching the single-file
         convention of (original height, width) alongside a downsampled buffer.
         """
-        flatfield = FlatFieldConfig(apply=bool(flatfield_profile_id), profile_id=flatfield_profile_id)
+        flatfield = FlatFieldConfig(
+            apply=bool(flatfield_profile_id),
+            profile_id=flatfield_profile_id,
+            flatfield_strength=flatfield_strength,
+            flatfield_luminance=flatfield_luminance,
+            flatfield_color=flatfield_color,
+        )
         key = None
         if file_hash and color_space is not None:
             token = stitch_token(stitch)

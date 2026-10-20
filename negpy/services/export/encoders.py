@@ -6,6 +6,7 @@ encode through here so a format setting cannot reach one path and miss another.
 """
 
 import io
+import os
 import struct
 import threading
 import zlib
@@ -17,6 +18,7 @@ import tifffile
 from PIL import Image, ImageFile, PngImagePlugin
 
 from negpy.domain.models import TiffCompression
+from negpy.kernel.system.apple_silicon import is_apple_silicon
 from negpy.features.metadata.resolution import Resolution
 
 _PNG_METRE = 1  # pHYs unit specifier
@@ -35,11 +37,12 @@ def encode_tiff(
     icc: Optional[bytes] = None,
     resolution: Optional[Resolution] = None,
     compression: TiffCompression = TiffCompression.ZIP,
+    destination: Any = None,
     **extra: Any,
 ) -> bytes:
     """Encode uint8/uint16 pixels as TIFF. ``extra`` passes through to imwrite."""
     compression = TiffCompression(compression)
-    buf = io.BytesIO()
+    buf = destination if destination is not None else io.BytesIO()
     kwargs: Dict[str, Any] = {
         "photometric": "rgb" if arr.ndim == 3 else "minisblack",
         # tifffile raises on a predictor without compression, and differencing only
@@ -52,9 +55,16 @@ def encode_tiff(
     if resolution is not None:
         kwargs["resolution"] = (resolution.x, resolution.y)
         kwargs["resolutionunit"] = resolution.unit
+    # Strips compress independently, so spreading them over the cores writes the same bytes
+    # (tifffile's default is one worker). 64-row strips cut the per-strip overhead of the
+    # default ~3-row ones: same pixels, a 96 MP 16-bit file compresses about 7x faster on
+    # 10 cores. An explicit maxworkers/rowsperstrip in extra wins.
+    kwargs["maxworkers"] = max(1, (os.cpu_count() or 1) // 2) if is_apple_silicon() else max(1, os.cpu_count() or 1)
+    if compression != TiffCompression.NONE:
+        kwargs["rowsperstrip"] = 64
     kwargs.update(extra)
     tifffile.imwrite(buf, arr, **kwargs)
-    return buf.getvalue()
+    return b"" if destination is not None else buf.getvalue()
 
 
 def encode_png(

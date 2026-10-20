@@ -49,6 +49,36 @@ def _g(
 
 
 SLIDER_GROUPS: tuple[SliderShortcutGroup, ...] = (
+    _g(
+        "flatfield_luminance",
+        tr("Flat Field Brightness ↑/↓"),
+        "flatfield_luminance_inc",
+        "flatfield_luminance_dec",
+        1.0,
+        tr("Geometry"),
+        step_decimals=0,
+        step_suffix="%",
+    ),
+    _g(
+        "flatfield_color",
+        tr("Flat Field Color ↑/↓"),
+        "flatfield_color_inc",
+        "flatfield_color_dec",
+        1.0,
+        tr("Geometry"),
+        step_decimals=0,
+        step_suffix="%",
+    ),
+    _g(
+        "flatfield_strength",
+        tr("Flat Field Strength ↑/↓"),
+        "flatfield_strength_inc",
+        "flatfield_strength_dec",
+        1.0,
+        tr("Geometry"),
+        step_decimals=0,
+        step_suffix="%",
+    ),
     _g("cyan", tr("Cyan ↑/↓"), "cyan_inc", "cyan_dec", 0.01, tr("Exposure")),
     _g("magenta", tr("Magenta ↑/↓"), "magenta_up", "magenta_down", 0.01, tr("Exposure")),
     _g("yellow", tr("Yellow ↑/↓"), "yellow_up", "yellow_down", 0.01, tr("Exposure")),

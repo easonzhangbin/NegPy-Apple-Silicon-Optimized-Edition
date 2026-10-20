@@ -13,6 +13,20 @@ Numpad keys can be bound separately from the number row (for example `Num+9` and
 Actions with no default key are not listed; every one of them can still be bound in **Customize**.
 
 <!-- shortcuts:start -->
+## Geometry
+| Key | Action |
+|-----|--------|
+| `]` | Rotate 90° CW |
+| `[` | Rotate 90° CCW |
+| `H` | Flip horizontal |
+| `V` | Flip vertical |
+| `X` / `Z` | Increase / decrease **Crop offset** (default step 1 px) |
+| `Alt + R` / `Alt + Shift + R` | Increase / decrease **Fine rotation** (default step 0.01°) |
+| `L` | Toggle straighten line tool |
+| `O` | Next crop guide overlay |
+| `Shift + O` | Rotate crop guide orientation |
+| `Shift + A` | Toggle Auto Crop |
+
 ## Navigation
 | Key | Action |
 |-----|--------|
@@ -54,20 +68,6 @@ Actions with no default key are not listed; every one of them can still be bound
 | `Shift + I` | Probe at cursor (zone, print density and ΔD beside the pointer) |
 | `Shift + P` | Soft proof the print on screen |
 | `Esc` | Leave the current view (peek, split, strip, zone overlay) or cancel the active tool |
-
-## Geometry
-| Key | Action |
-|-----|--------|
-| `]` | Rotate 90° CW |
-| `[` | Rotate 90° CCW |
-| `H` | Flip horizontal |
-| `V` | Flip vertical |
-| `X` / `Z` | Increase / decrease **Crop offset** (default step 1 px) |
-| `Alt + R` / `Alt + Shift + R` | Increase / decrease **Fine rotation** (default step 0.01°) |
-| `L` | Toggle straighten line tool |
-| `O` | Next crop guide overlay |
-| `Shift + O` | Rotate crop guide orientation |
-| `Shift + A` | Toggle Auto Crop |
 
 ## View
 | Key | Action |

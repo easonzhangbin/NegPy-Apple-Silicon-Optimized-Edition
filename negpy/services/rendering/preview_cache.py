@@ -134,7 +134,13 @@ class PreviewBufferCache:
                 # each would evict every small preview through the byte cap.
                 limit = max(1, self._app.preview_cache_max_full_res_entries)
                 full = [k for k in self._order if isinstance(k, tuple) and k[3] and k != t]
-                for other in full[: max(0, len(full) - (limit - 1))]:  # trim oldest beyond budget
+                excess = max(0, len(full) - (limit - 1))
+                # A full-resolution neighbour prefetch must not trim the frame on screen:
+                # the excess comes out of the unprotected entries, oldest first.
+                protected = frozenset(protected_file_hashes)
+                if protected:
+                    full = [k for k in full if not self._is_protected(k, protected, False)]
+                for other in full[:excess]:  # trim oldest beyond budget
                     self._remove_key(other)
             if t in self._data:
                 self._order.remove(t)
@@ -176,6 +182,20 @@ class PreviewBufferCache:
                 reclaimable_entries=len(reclaimable),
                 reclaimable_bytes=sum(self._data[key].byte_size for key in reclaimable),
             )
+
+    def trim_for_memory(self, available_bytes: int | None, protected_file_hashes: Collection[str] = ()) -> None:
+        if available_bytes is None or available_bytes >= 2 * 1024**3:
+            return
+        target = max(0, available_bytes - 1024**3)
+        protected = frozenset(protected_file_hashes)
+        with self._lock:
+            size = sum(entry.byte_size for entry in self._data.values())
+            for key in list(self._order):
+                if size <= target:
+                    break
+                if not self._is_protected(key, protected, False):
+                    size -= self._data[key].byte_size
+                    self._remove_key(key)
 
     def _remove_key(self, t: Hashable) -> None:
         self._data.pop(t, None)

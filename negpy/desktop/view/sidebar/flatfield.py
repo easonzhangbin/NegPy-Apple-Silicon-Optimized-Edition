@@ -1,5 +1,6 @@
-from negpy.kernel.system.i18n import tr
+from negpy.kernel.system.i18n import mark, tr
 import os
+from typing import cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -7,6 +8,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
+    QVBoxLayout,
 )
 
 from negpy.desktop.view.confirm import confirm_delete_named
@@ -14,8 +16,14 @@ from negpy.desktop.view.sidebar.base import BaseSidebar
 from negpy.desktop.view.styles.templates import ICON_BUTTON_WIDTH, field_label, hint_label
 from negpy.desktop.view.widgets.file_dialogs import last_open_folder, pick_start_dir
 from negpy.desktop.view.widgets.step_combo import StepCombo
+from negpy.desktop.view.widgets.sliders import CompactSlider
 from negpy.infrastructure.loaders.helpers import get_supported_raw_wildcards
 
+STRENGTH_TOOLTIP = mark(
+    "Flat-field correction strength: 0% bypasses correction; 100% uses the reference as measured; "
+    "200% doubles the exposure compensation. Double-click to reset to 100%. "
+    "Higher values can amplify noise and color shading."
+)
 _NONE_LABEL = tr("— None —")
 _FILE_FILTER = f"Reference images ({get_supported_raw_wildcards()});;All files (*)"
 
@@ -28,6 +36,7 @@ class FlatFieldSidebar(BaseSidebar):
     """
 
     def _init_ui(self) -> None:
+        layout = cast(QVBoxLayout, self.layout)
         row = QHBoxLayout()
         row.addWidget(field_label(tr("Profile")))
         self.profile_combo = StepCombo()
@@ -58,10 +67,30 @@ class FlatFieldSidebar(BaseSidebar):
         self.add_btn = self._icon_action("fa5s.plus", tr("Pick a reference image and save it as a named profile"))
         self.delete_btn = self._icon_action("fa5s.trash", tr("Remove the selected profile"))
         # add_btn and delete_btn go on the card's FLAT FIELD CORRECTION header (ControlsPanel).
-        self.layout.addLayout(row)
+        layout.addLayout(row)
 
+        self.strength_slider = CompactSlider(tr("Flat Field Strength"), 0, 200, 100, step=1, precision=1, unit="%", has_neutral=True)
+        self.strength_slider.setToolTip(tr(STRENGTH_TOOLTIP))
+        layout.addWidget(self.strength_slider)
+
+        self.component_sliders = {}
+        for field, label in (("flatfield_luminance", tr("Flat Field Brightness")), ("flatfield_color", tr("Flat Field Color"))):
+            slider = CompactSlider(label, 0, 200, 100, step=1, precision=1, unit="%", has_neutral=True)
+            slider.setToolTip(
+                tr(
+                    "Multiplies total strength for this component. Brightness uses common log-gain; color uses channel-relative log-gain. 0% disables this component."
+                )
+            )
+            self.component_sliders[field] = slider
+            layout.addWidget(slider)
+        self.luminance_slider = self.component_sliders["flatfield_luminance"]
+        self.color_slider = self.component_sliders["flatfield_color"]
+        self.analysis_btn = self._labeled_action(
+            "fa5s.chart-area", tr("Analyze Flat Field…"), tr("Compare brightness and color maps and inspect reference warnings.")
+        )
+        layout.addWidget(self.analysis_btn)
         self.hint = hint_label(tr("Add a scan of the bare light source to enable."))
-        self.layout.addWidget(self.hint)
+        layout.addWidget(self.hint)
         self._refresh_profiles()
 
     def _connect_signals(self) -> None:
@@ -71,7 +100,27 @@ class FlatFieldSidebar(BaseSidebar):
         self.profile_combo.currentIndexChanged.connect(self._on_profile_selected)
         self.add_btn.clicked.connect(self._on_add)
         self.delete_btn.clicked.connect(self._on_delete)
+        self.strength_slider.valueChanged.connect(
+            lambda value: self.controller.set_roll_default("flatfield", persist=False, flatfield_strength=value / 100.0)
+        )
+        self.strength_slider.valueCommitted.connect(
+            lambda value: self.controller.set_roll_default("flatfield", flatfield_strength=value / 100.0)
+        )
+        for field, slider in self.component_sliders.items():
+            slider.valueChanged.connect(
+                lambda value, name=field: self.controller.set_roll_default("flatfield", persist=False, **{name: value / 100.0})
+            )
+            slider.valueCommitted.connect(lambda value, name=field: self.controller.set_roll_default("flatfield", **{name: value / 100.0}))
+        self.analysis_btn.clicked.connect(self.show_analysis)
         self.sync_ui()
+
+    def show_analysis(self):
+        from negpy.services.assets.flatfield import FlatFieldProfiles
+        from negpy.desktop.view.widgets.optical_diagnostics import FlatFieldAnalysisDialog
+
+        stored = FlatFieldProfiles.load_check(self.state.config.flatfield.profile_id)
+        if stored is not None:
+            FlatFieldAnalysisDialog(stored, self.state.config.flatfield, self, repo=self.controller.session.repo).exec()
 
     def _refresh_profiles(self) -> None:
         # Preserve the caller's block state: unblocking here would let sync_ui's setCurrentIndex
@@ -134,6 +183,12 @@ class FlatFieldSidebar(BaseSidebar):
 
             self.enable_btn.setChecked(conf.apply)
             self.enable_btn.setEnabled(bool(conf.profile_id))
+            self.strength_slider.setValue(conf.flatfield_strength * 100.0)
+            self.strength_slider.setEnabled(conf.apply and bool(conf.profile_id))
+            for field, slider in self.component_sliders.items():
+                slider.setValue(getattr(conf, field) * 100)
+                slider.setEnabled(conf.apply and bool(conf.profile_id))
+            self.analysis_btn.setEnabled(bool(conf.profile_id))
             self.hint.setVisible(not conf.profile_id)
         finally:
             self.block_signals(False)
@@ -144,5 +199,13 @@ class FlatFieldSidebar(BaseSidebar):
         self.check_btn.blockSignals(False)
 
     def block_signals(self, blocked: bool) -> None:
-        for w in (self.enable_btn, self.check_btn, self.profile_combo, self.add_btn, self.delete_btn):
+        for w in (
+            self.enable_btn,
+            self.check_btn,
+            self.profile_combo,
+            self.add_btn,
+            self.delete_btn,
+            self.strength_slider,
+            *self.component_sliders.values(),
+        ):
             w.blockSignals(blocked)

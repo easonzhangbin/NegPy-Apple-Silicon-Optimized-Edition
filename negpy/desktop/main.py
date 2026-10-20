@@ -29,6 +29,7 @@ from negpy.services.assets.migrations.roll_fields import (
     migrate_paper_card_split,
 )
 from negpy.kernel.system.config import APP_CONFIG, BASE_USER_DIR
+from negpy.kernel.system.apple_silicon import apply_cache_defaults as apply_apple_cache_defaults
 from negpy.kernel.system.logging import get_logger, setup_logging
 from negpy.kernel.system.override import apply as apply_override
 from negpy.kernel.system.override import apply_stored as apply_stored_override
@@ -253,6 +254,12 @@ def main() -> None:
 
     try:
         os.environ["NUMBA_THREADING_LAYER"] = "workqueue"
+
+        # Apple Silicon: size the preview caches to unified memory. Before the overrides,
+        # so override.toml and Preferences still have the last word.
+        raised = apply_apple_cache_defaults(APP_CONFIG)
+        if raised:
+            logger.info("Apple Silicon cache defaults: %s", raised)
 
         apply_override(override_cfg, APP_CONFIG)
 

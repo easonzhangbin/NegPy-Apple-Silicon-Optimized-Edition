@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True)
@@ -13,3 +14,12 @@ class FlatFieldConfig:
     # machines: the render path resolves the gain by this id, so the original reference image
     # can be moved or deleted without breaking the correction.
     profile_id: str = ""
+    flatfield_strength: float = 1.0
+    flatfield_luminance: float = 1.0
+    flatfield_color: float = 1.0
+
+    def __post_init__(self) -> None:
+        for name in ("flatfield_strength", "flatfield_luminance", "flatfield_color"):
+            strength = float(getattr(self, name))
+            strength = max(0.0, min(2.0, strength)) if math.isfinite(strength) else 1.0
+            object.__setattr__(self, name, strength)

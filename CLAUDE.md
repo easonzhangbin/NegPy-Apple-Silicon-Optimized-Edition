@@ -126,3 +126,7 @@ If no existing control fits, say so and propose the addition. Do not ship a one-
 - **Say it once.** A paragraph that states one constraint three ways buries it. A constraint shared by a function and its caller goes in the function that enforces it; the caller says nothing.
 - **No notes to a reviewer.** A comment asking someone to confirm, verify or check something is stale the day it merges, and outlives the answer. Open questions and things still to test go in the PR description. `TODO` is for work the code needs, not a message to a person.
 - **End on the constraint.** The last sentence of a comment, a docstring or a doc paragraph is a fact, not a conclusion about it ("the one question the pipeline cannot answer about itself", "this is what Esc is for").
+
+## Custom Apple Silicon build
+
+`kernel/system/work_budget.py` coordinates preview and export decodes. Never hold a decode slot around a composite that waits for its own decoding workers. Context propagation keeps export and preview pre-reading at background priority. Flat-field strength is a source bake shared by preview, embedded lens correction and export; include it in every composite cache token. `scripts/zh_photography_terms.json` is the reviewed Chinese overlay applied by the translation extractor. Custom frozen builds must not self-install upstream binaries over these changes.

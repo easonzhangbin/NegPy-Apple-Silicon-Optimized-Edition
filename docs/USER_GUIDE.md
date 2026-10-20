@@ -85,7 +85,7 @@ An unedited frame gets the rig and roll settings: film process, crop ratio, flip
 
 **Preferences → Session & Storage → Persistent Settings…** sets which settings carry. **Carry settings between frames** is the master switch; off, new frames get bare defaults.
 
-An edited frame keeps its look; only export and metadata settings reach it. **Reset Settings** returns bare defaults and, in a roll, sets every Roll-tab card back to **Roll**. No reset changes the scanning setup (Camera WB / Linear RAW, demosaic); **Scanning setup** sets those, and a camera Scan sets the decode and the print stock per frame from its light.
+An edited frame keeps its look; only export and metadata settings reach it. **Reset Settings** returns bare defaults and, in a roll, sets every Roll-tab card back to **Roll**. No reset changes the scanning setup (Linear RAW, demosaic); **Scanning setup** sets those.
 
 ### Frame or roll: the scope pair
 
@@ -364,7 +364,7 @@ Pins are proofs, not edits: any other edit or a frame change removes them. Zone 
 
 Rows that measure the scan, not your edit; hover for details.
 
-*   **Negative**: development character (lo = flat, ≈N−1; nrm = normal; hi = contrasty, ≈N+1), then Dmin · Dmed · Dmax above the clear base and Δ, the normalization window's density range. Comparable across a roll; an estimate, not a densitometer reading. The base is the one set with **Film Base** on the Metering card, else one read from the rebate; the hover names which, and without a base the row shows the character in full (flat, normal, contrasty) and Δ alone.
+*   **Negative**: relative density range and development character: flat (≈N−1), normal, contrasty (≈N+1). Comparable across a roll; an estimate, not a densitometer reading. Hover for Dmax, Dmed and Dmin above the clear base: the one set with **Film Base** on the Metering card, else one read from the rebate, and the hover names which.
 *   **Exposure**: approximate midtone in stops from neutral; positive is high-key, negative low-key.
 *   **Clipping**: share of pixels crushed to black or blown to white, worst channel. Amber above 1%.
 *   **Scan clip**: share of source pixels at or above sensor white. On a negative no edit recovers it: expose the scan lower. Amber above 1%.
@@ -723,7 +723,7 @@ These controls correct the capture, not the look.
 
 **Capture**:
 
-*   **Scanning setup**: a wizard (*how do you scan?*, *what light source?*) that sets Camera WB or Linear RAW and the print stock, and picks the Scan tab's scanner. A camera Scan sets the decode and the print stock per frame from its light instead: white light keeps Camera WB, Trichrome and Single Capture decode Linear RAW, and a Digital print stock follows the same table. It runs once after the first-launch tour; open it again when your rig changes.
+*   **Scanning setup**: a wizard (*how do you scan?*, *what light source?*) that sets Camera WB or Linear RAW and the print stock. It runs once after the first-launch tour; open it again when your rig changes.
 *   **Camera WB / Linear RAW** (default Camera WB): how a RAW file decodes. *Camera WB* applies the camera's as-shot white balance; *Linear RAW* decodes with neutral multipliers. Locked for a Trichrome triplet.
 
 What the wizard sets:
@@ -849,6 +849,8 @@ The scanning optics: one lens correction and one light correction for every fram
 *   **Embedded** (the file's own lens profile for DNG, Sony ARW and Panasonic RW2; RW2 carries distortion only):
     *   **Distortion**: straightens curved lines in place of the manual correction. Set it before cropping or retouching.
     *   **CA**: reduces color fringes.
+*   **Measured Lens CA**: applies a saved radial R/G and B/G channel remap to ordinary single-frame RGB sources; replaces embedded CA, not embedded distortion. Composites and RGB+IR are not supported. A mismatched sensor aspect is skipped.
+*   **Calibrate Lens CA…**: measure a neutral black-and-white textured target across the center and corners, captured with the same lens, aperture, focus distance and magnification. Inspect the corner previews; save only a validated fit. Profiles stay in the user `lens_ca` folder and coefficients stay in edits. This does not correct axial color blur; a flat light field or a color negative is not a suitable reference.
 *   **Distortion Correction** (-0.100 to 0.100, in steps of 0.001): positive corrects barrel, negative pincushion. Use the film rebate as a straight edge.
 
 #### Flat Field Correction: even out the light
@@ -857,6 +859,9 @@ Corrects uneven light (vignetting, falloff) from a copy-stand or scanner light, 
 
 *   **Profile**: **+** bakes a reference image into a named profile in NegPy's `flatfield` folder; the image can then be deleted. **Trash** asks first; every frame using the profile loses its correction.
 *   **Apply Flat Field**: applies the selected profile to this roll.
+*   **Flat Field Strength** (0–200%, default 100%): 0% bypasses correction; 100% uses the measured reference; 200% doubles its exposure compensation. Double-click to reset. Higher strengths can amplify noise and color shading.
+*   **Flat Field Brightness** and **Flat Field Color** (each 0–200%, default 100%): multiply the total strength for common RGB log-gain and channel-relative log-gain respectively. Zero disables that component; all defaults retain the measured correction. This split is not CIE luminance preservation.
+*   **Analyze Flat Field…**: compares reference brightness and spatial color deviations on fixed scales before and after correction; warns about clipped highlights, high-frequency noise or texture, limited reference gain and excessive effective gain. Old preview-only profiles can hide noise; recreate the profile for a fresh measurement.
 *   **Check Flat Field**: shows how well the selected profile corrects its own reference. A good profile shows an even gray; a band or patch shows where it is off (full white or black is 10% or more). It turns and flips with the open frame, without fine rotation, keystone or crop. An older profile without check data shows the light it corrects instead; save it again to check it. Saving warns when the reference is clipped or does not correct itself evenly.
 
 A newly chosen profile becomes the rig's default for the next roll.
@@ -1061,7 +1066,7 @@ Capture film directly into NegPy. The **Scanner** card picks the scanner; the ta
 <!-- panel:scan_source -->
 ### Scanner
 
-*   **Scanner** (Camera by default): **Film Scanner** drives a dedicated film scanner (Device, Film & Quality, Framing); **Camera** drives a camera on a copy stand (Camera, Preset).
+*   **Scanner** (Camera by default): **Film Scanner** drives a dedicated film scanner (Device, Film & Quality, Framing); **Camera** drives a camera on a copy stand (Camera, Preset & Light).
 
 <!-- panel:scan_device -->
 ### Device
@@ -1103,27 +1108,24 @@ Capture film directly into NegPy. The **Scanner** card picks the scanner; the ta
 Copy-stand capture with a camera in **PC Remote** mode over USB (macOS/Linux): with a NegPy **Scanlight**, R/G/B triplets or one exposure with the three LEDs lit together, else one white-light exposure. Needs `python-gphoto2` (`pip install gphoto2`; no Windows build). Setup and troubleshooting: CAMERA_SCANNING.md.
 
 *   **Camera** / **Light**: connection status, found automatically; the light turns amber once it runs warm. On Linux, the Scanlight's serial port needs your user in the `dialout` group (`sudo usermod -aG dialout $USER`, then log out and back in).
-*   **Live View**: click the image to aim the focus magnifier. Turn the focus ring past best focus, then back until the **Focus meter** reads **at peak**. ISO, shutter and aperture are set from its toolbar or from the card; both follow the camera. With a Scanlight, Scan shoots the whole triplet into the next frame and never touches an existing file. **R**, **G** and **B** pick which exposures Retake shoots again over the current frame's, replacing those files; **IR**, on a light with infrared LEDs, is the Infrared setting for both. A frame whose three visible exposures exist stays one triplet. An `_IR` file stays its own frame in the Film Strip.
+*   **Live View**: click the image to aim the focus magnifier. Turn the focus ring past best focus, then back until the **Focus meter** reads **at peak**. ISO, shutter and aperture are set from its toolbar, or locked by a calibrated RGB preset.
 *   **Histogram** and **Zebras**: the frame's RGB histogram, and hatching on pixels at the top (red) and bottom (blue) of the preview range. The preview clips before the RAW does, so a zebra is an early warning.
-*   **Meter**: one RAW probe sets the shutter so the region that must not clip (a negative's clear base, a slide's brightest highlights) lands just under clipping. The white-light preset's film type decides which. An RGB preset meters its base under the scan light, and the metered shutter replaces the preset's until you pick the preset again. A negative with no clear base in frame, or a base the probe cannot read unclipped, meters its thinnest picture instead and says so. A white-light frame imports with the camera's white balance, so its target allows for that gain. A clipped picture steps down two stops; meter again.
+*   **Meter** (white-light and camera-only scanning): one RAW probe sets the shutter so the region that must not clip (a negative's clear base, a slide's brightest highlights) lands just under clipping. The white-light preset's film type decides which. A clipped reading steps down two stops; meter again.
 *   **Scan** and **Retake**: **Scan** shoots the next frame, auto-numbered, and imports it; **Retake** (the redo arrow beside **Live View**) shoots the last frame again. In the Live View window, `Space` or `S` scans and `R` retakes.
-*   **Capture Delay** (off, or 0.1 to 10 s on a log scale, default off): **Scan** and **Retake** wait this long before the first exposure, so a table that shakes when you let go can settle. The box takes two decimals. The panel counts down; **Stop** ends the wait. The same delay is a stepper beside **Scan** in the Live View window, in rungs of 0.1, 0.25, 0.5, 1, 2.5, 5 and 10 s.
+*   **Capture Delay** (0 to 8 s, default 0): **Scan** and **Retake** wait this long before the first exposure, so a table that shakes when you let go can settle. The panel counts down; **Stop** ends the wait.
 *   **Keep Light On** (the bulb beside **Retake**, off by default): the Scanlight goes dark after each scan; this lights it again with the framing light, so you can frame the next shot on the camera's screen. Live View lights it again without this toggle.
 *   **Narrowband**: RGB-lit scans render more saturated than white light; a **Print stock** other than *Digital* prints them through real dyes.
 
 <!-- panel:scan_light -->
-### Preset
+### Preset & Light
 
-Shown while a Scanlight is connected. The LED levels, the camera exposure and the infrared row sit on a rail under the preset dropdown: they are the preset's values. Channel Delay, below the rail, is a setting of the rig.
+Shown while a Scanlight is connected.
 
-*   **Preset**: forces its RGB levels, ISO, shutter and aperture each frame. The list holds your own presets and the built-ins you have added; empty, it reads "Click + to add a preset". **+** offers three ways to add one. **Built-in Presets**, which need no calibration: **White Light** (B&W, Color Negative or Slide, autodetected or named), **White Light + IR, Color Negative**, **White Light + IR, Slide**, **Trichrome, Color Negative** and **Trichrome + IR, Color Negative**; picking one adds it to the list and selects it, and the trash removes it from the list again. Every built-in shoots at the camera's exposure: ISO, Shutter and Aperture are live steppers and the meter sets the shutter; the Trichrome ones light the LEDs at full power. **Calibrate on the Film Base…**: place the rectangle on clear film base, name it, run it; it solves a shutter and LED levels just under clipping. **Set by Hand**: unlocks the sliders and steppers; Scan uses them as they stand, and the save button keeps them as a preset. The White Light presets show only on a Scanlight with a white LED (v4 and Big Scanlight); on a v1 to v3, a Single Capture preset lights R, G and B together instead.
+*   **Preset**: forces its RGB levels, ISO, shutter and aperture each frame. **+** calibrates: place the rectangle on clear film base, name it, run it; it solves a shutter and LED levels just under clipping. **Create a manual preset…** sets one by hand. The White Light presets show only on a Scanlight with a white LED (v4 and Big Scanlight); on a v1 to v3, a Single Capture preset lights R, G and B together instead.
 *   **Red**, **Green**, **Blue**, **White** (0 to 255): LED levels, editable while you build a manual preset. **Light Off** turns every channel off.
-*   **Capture mode**: **Triplet** shoots one exposure per LED and merges them; **Single Capture** shoots one exposure with all three lit and imports it as an ordinary RAW. A selected Triplet preset lights a dimmed framing mix, raised per channel on an RGB-only Scanlight (v1 to v3) so it stays visible; the scan uses the preset's own levels. Hidden under a white-light preset, which shoots one exposure.
+*   **Capture mode**: **Triplet** shoots one exposure per LED and merges them; **Single Capture** shoots one exposure with all three lit and imports it as an ordinary RAW. A selected Triplet preset lights a dimmed framing mix, raised per channel on an RGB-only Scanlight (v1 to v3) so it stays visible; the scan uses the preset's own levels.
 *   **Create Sensor Profile** (Single Capture only, default on): also saves a sensor profile under the preset's name; a roll scanned with the preset takes it and turns Linear RAW on. Other rolls do not get it.
-*   **ISO**, **Shutter**, **Aperture**: the preset's exposure, live under any preset; a step overrides the recipe until you pick the preset again.
-*   **Aperture Priority Meter** (the gauge beside CAMERA EXPOSURE): the Live View **Meter**, from the card. Opens Live View when it is closed.
-*   **IR Shutter** (with infrared LEDs): the infrared exposure's own shutter, stepped through the camera's choices while Live View runs. Set it by hand; calibration does not solve it. A preset saves it.
-*   **Infrared** (the LED beside IR Shutter): ends every Scan with an infrared exposure at the IR Shutter, saved as `_IR` beside the frame; the camera returns to its own shutter afterwards. A preset recalls it. Color film passes infrared; silver grain does not, so there is no B&W + IR. Needs a light with infrared LEDs and a camera that passes 850 nm, a full-spectrum or IR-converted body: a stock camera's IR-cut filter leaves the infrared frame at noise. Set the lens to manual focus: autofocus hunts on the dark infrared frame and times out.
+*   **ISO**, **Shutter**, **Aperture**: the preset's exposure, editable while you build a manual preset.
 *   **Channel Delay** (0 to 5000 ms): pauses between R, G and B for bodies that lock up. Triplet presets only.
 
 <!-- panel:scan_output -->
@@ -1174,7 +1176,7 @@ Application-wide settings: **⋯** menu → **Preferences…** or `Ctrl + ,`. Ch
 ### Performance
 
 *   **GPU acceleration**: renders on the GPU. Off uses the slower CPU pipeline, same image. If the GPU fails at launch, an amber line here says so.
-*   **Multi-core CPU rendering**: runs CPU rendering on all cores; it helps exports and machines without a usable GPU. On by default except on macOS, where it can end the app; after such a crash NegPy offers to turn it off. `cpu_parallel` in `override.toml` overrides it.
+*   **Multi-core CPU rendering**: runs CPU rendering on all cores; it helps exports and machines without a usable GPU. On by default except on Intel Macs, where it can end the app; after such a crash NegPy offers to turn it off. `cpu_parallel` in `override.toml` overrides it.
 *   **Search by meaning**: find frames by description (§2).
 *   **Preview size** (512 to 8192 px): canvas long edge; higher is sharper and uses more memory.
 *   **Preview cache** and **Preview cache limit**: photos kept decoded, and their memory limit. Lower both on low RAM.
@@ -1182,6 +1184,10 @@ Application-wide settings: **⋯** menu → **Preferences…** or `Ctrl + ,`. Ch
 *   **Rendered frames**: frames kept for going back without a new render.
 *   **GPU texture cap**: largest texture dimension; 0 lets the hardware decide. Lower it if exports run out of GPU memory.
 *   **Show GPU memory warning**: a message when an HQ preview is downsampled to fit the texture cap.
+
+On an Apple Silicon Mac the defaults follow its unified memory: with 16 GB or more, an HQ preview loads up to 8192 px (16384 px from 32 GB) instead of 6144 px, the preview caches grow with the memory, and from 32 GB the frames beside the current one are decoded at full resolution in the background (RGB-scan triplets included, next frame first), so stepping through a roll in HQ is a cache hit. A value set here or in `override.toml` still wins.
+
+Background decodes share a bounded worker budget with foreground loads. Foreground work takes priority; duplicate in-flight preview decodes share a result. Pre-reading favors the current navigation direction. Under low memory, inactive preview entries are released, GPU source tiles are not retained, and export pre-reading is paused. TIFF files are encoded directly into an atomic temporary file. User-set OpenMP environment values take priority over the default thread limit.
 
 Rows from **Preview size** down need a restart. A value in `override.toml` wins and grays out its row.
 
@@ -1201,7 +1207,7 @@ For crashes on launch or rendering glitches: edit `Documents/NegPy/override.toml
 | `display.qt_rhi_backend` | `"auto"`, `"vulkan"`, `"d3d12"`, `"metal"`, `"opengl"`, `"software"` | Qt UI rendering backend. |
 | `display.qt_platform` | `"auto"`, `"xcb"`, `"wayland"` | Window system plugin (Linux only). |
 | `performance.force_hq_preview` | `true` / `false` (or absent) | Overrides the saved HQ preview toggle. |
-| `performance.cpu_parallel` | `true` / `false` (or absent) | Multi-core CPU rendering. On by default, except on macOS. |
+| `performance.cpu_parallel` | `true` / `false` (or absent) | Multi-core CPU rendering. On by default, except on Intel Macs. |
 | `logging.level` | `"debug"`, `"info"`, `"warning"`, `"error"` | Log verbosity. Use `"debug"` when you report issues. |
 
 `max_texture_size`, `preview_render_size`, `preview_cache_max_bytes`, `preview_cache_max_entries`, `preview_cache_max_full_res_entries` and `render_memo_max_entries` take the same values as their Preferences rows.

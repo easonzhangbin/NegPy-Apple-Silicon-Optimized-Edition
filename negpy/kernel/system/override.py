@@ -304,6 +304,15 @@ def effective_max_texture_size(app_config: AppConfig, gpu: Any) -> int | None:
     if app_config.max_texture_size is not None:
         return app_config.max_texture_size
     if gpu is not None and getattr(gpu, "is_integrated", False):
+        # Apple Silicon reports its unified memory honestly: size the cap to it, so a
+        # 60 MP scan's HQ preview loads at the scan's own resolution on a 16 GB+ Mac.
+        from negpy.kernel.system.apple_silicon import hq_texture_cap, is_apple_silicon, unified_memory_bytes
+
+        if is_apple_silicon():
+            limits = getattr(gpu, "limits", None) or {}
+            cap = hq_texture_cap(unified_memory_bytes(), limits.get("max_texture_dimension_2d"))
+            if cap is not None:
+                return cap
         return INTEGRATED_GPU_TEXTURE_CAP_DEFAULT
     return None
 

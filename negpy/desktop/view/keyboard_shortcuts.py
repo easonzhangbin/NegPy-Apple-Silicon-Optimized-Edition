@@ -477,9 +477,6 @@ class ShortcutManager:
             "scanlight_keep_light_on": lambda: (
                 right.scanlight_sidebar.keep_light_btn.toggle() if not right.scanlight_sidebar.keep_light_btn.isHidden() else None
             ),
-            "scanlight_infrared": lambda: (
-                right.scanlight_sidebar.ir_toggle.toggle() if not right.scanlight_sidebar._ir_exposure_widget.isHidden() else None
-            ),
             "mode_color_negative": lambda: controls.process_sidebar.mode_btn.setCurrentIndex(0),
             "mode_bw_negative": lambda: controls.process_sidebar.mode_btn.setCurrentIndex(1),
             "mode_transparency": lambda: controls.process_sidebar.mode_btn.setCurrentIndex(2),
@@ -494,6 +491,9 @@ class ShortcutManager:
             "auto_crop_square": lambda: controls.autocrop_sidebar.square_btn.toggle(),
             "crop_to_valid": lambda: controls.geometry_sidebar.crop_to_valid_btn.toggle(),
             "lens_distortion_from_metadata": lambda: controls.lens_sidebar.metadata_distortion_btn.click(),
+            "flatfield_analysis": lambda: controls.flatfield_sidebar.analysis_btn.click(),
+            "calibrate_lens_ca": lambda: controls.lens_sidebar.calibrate_btn.click(),
+            "toggle_custom_ca": lambda: controls.lens_sidebar.custom_ca_btn.click(),
             "lens_ca_from_metadata": lambda: controls.lens_sidebar.metadata_ca_btn.click(),
             "pick_dust": lambda: _toggle_tool_button(self.window, "finish", controls.retouch_sidebar.pick_dust_btn),
             "pick_scratch": lambda: _toggle_tool_button(self.window, "finish", controls.retouch_sidebar.pick_scratch_btn),

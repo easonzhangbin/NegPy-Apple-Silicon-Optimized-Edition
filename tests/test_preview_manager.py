@@ -82,6 +82,8 @@ def test_load_linear_preview_hq_downscales_to_vram_cap_on_integrated_gpu() -> No
         patch("negpy.services.rendering.preview_manager.loader_factory") as lf,
         patch("negpy.services.rendering.preview_manager.APP_CONFIG", fake_cfg),
         patch("negpy.services.rendering.preview_manager.GPUDevice") as gpu_device_cls,
+        # The generic integrated-GPU cap; Apple Silicon scales with memory (test_apple_silicon).
+        patch("negpy.kernel.system.apple_silicon.is_apple_silicon", return_value=False),
     ):
         gpu_device_cls.get.return_value = fake_gpu
         lf.get_loader.return_value = (ctx, {"color_space": "Adobe RGB"})

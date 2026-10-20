@@ -32,6 +32,13 @@ __pycache__
 VERSION
 # metrics artifacts
 metrics.json
+outputs/
+release-assets/
+*.negpy
+*.db
+*.db-wal
+*.db-shm
+*.log
 # llm stuff
 plans/
 .superpowers/

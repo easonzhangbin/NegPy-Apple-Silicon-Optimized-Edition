@@ -47,11 +47,9 @@ class CrosstalkProfiles:
     def _scan_dir(directory: str) -> dict:
         """Maps display-name -> flat 9-float matrix for valid .toml files in a directory."""
         result: dict = {}
-        try:
-            names = os.listdir(directory)
-        except OSError:  # absent, or a user folder the OS blocks: no profiles there
+        if not os.path.isdir(directory):
             return result
-        for fname in names:
+        for fname in os.listdir(directory):
             if not fname.endswith(".toml"):
                 continue
             path = os.path.join(directory, fname)
@@ -119,11 +117,9 @@ class CrosstalkProfiles:
         """display-name -> type for every valid profile; bundled wins, like _scan."""
         types: dict = {}
         for directory in (APP_CONFIG.crosstalk_dir, get_resource_path("crosstalk")):
-            try:
-                names = os.listdir(directory)
-            except OSError:
+            if not os.path.isdir(directory):
                 continue
-            for fname in names:
+            for fname in os.listdir(directory):
                 if not fname.endswith(".toml"):
                     continue
                 path = os.path.join(directory, fname)
@@ -146,11 +142,9 @@ class CrosstalkProfiles:
 
         out: dict = {}
         for directory in (APP_CONFIG.crosstalk_dir, get_resource_path("crosstalk")):
-            try:
-                names = os.listdir(directory)
-            except OSError:
+            if not os.path.isdir(directory):
                 continue
-            for fname in names:
+            for fname in os.listdir(directory):
                 if not fname.endswith(".toml"):
                     continue
                 data = load_toml_cached(os.path.join(directory, fname))

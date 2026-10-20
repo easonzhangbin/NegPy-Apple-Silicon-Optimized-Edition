@@ -70,6 +70,9 @@ class _PreviewService:
         full_resolution,
         file_hash,
         flatfield_profile_id="",
+        flatfield_strength=1.0,
+        flatfield_luminance=1.0,
+        flatfield_color=1.0,
         demosaic="Auto",  # noqa: ARG002 — accepted, not asserted on
     ):
         self.stitch_calls.append({"primary_path": primary_path, "file_hash": file_hash, "flatfield_profile_id": flatfield_profile_id})

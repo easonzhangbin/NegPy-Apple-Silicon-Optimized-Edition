@@ -1,3 +1,76 @@
+# NegPy M 系列处理器优化版
+# NegPy Apple Silicon Optimized Edition
+
+**非官方定制版 / Unofficial custom build**
+
+本仓库提供基于 [marcinz606/NegPy](https://github.com/marcinz606/NegPy) 的 **0.65.0 / r8** 定制快照，不是官方 0.66.0，也不代表已包含官方主分支所有新改动。原作者、贡献者及许可证保持不变。
+
+This repository publishes the locally validated **0.65.0 / r8** custom snapshot of [marcinz606/NegPy](https://github.com/marcinz606/NegPy). It is not an official 0.66.0 release and does not claim every newer upstream-main change. Upstream authorship, credits and licenses remain intact.
+
+[下载 / Releases](https://github.com/easonzhangbin/NegPy-Apple-Silicon-Optimized-Edition/releases) · [使用指南 / User guide](docs/USER_GUIDE.md) · [验证报告 / Validation report](docs/reports/r8-validation.md)
+
+## 定制功能 / Custom features
+
+| 项目 / Area | 中文 | English |
+|---|---|---|
+| Apple Silicon | 动态 OpenMP LibRaw、多核预算、三色并行解码、统一内存缓存与低内存保护。 | Shared OpenMP LibRaw, bounded multicore decoding, parallel trichrome decoding and memory-budgeted caches. |
+| 导出 / Export | TIFF 编码到临时文件后原子替换，减少中间内存占用。 | TIFF encoding to a temporary file followed by atomic replacement, limiting intermediate memory use. |
+| 平场 / Flat field | 独立亮度与空间色彩强度、前后诊断图、参考图质量提示。 | Separate brightness/color strengths, before/after maps and reference-quality warnings. |
+| 色差 / Lens CA | 从中性参考靶测量径向横向色差，经独立区域验证后保存。 | Reference-based radial lateral-CA measurement, held-out validation and reusable profiles. |
+| 中文 / Chinese | 保留上游多语言机制，维护摄影、暗房术语修订表。 | Retain upstream localization with a reviewed Chinese photography/darkroom terminology overlay. |
+
+Metal/WebGPU 原本就是 NegPy 的功能，不是本分支从零新增。平场与实测色差在 CPU 端预处理线性源图，后续渲染使用原有 GPU 后端；不宣称所有操作走 GPU，或所有 M 系列设备都有相同加速。
+
+Metal/WebGPU is an existing upstream feature. Flat-field and measured CA run on the CPU linear-source path before the existing GPU renderer. Not every operation runs on the GPU, and no universal speedup is claimed for every M-series device or workload.
+
+## 使用与限制 / Usage and limitations
+
+- **平场：整卷 → 光学。** 总强度、亮度、色彩均为 0–200%，默认 100%，分量与总强度相乘。“分析平场…”用同一标尺比较前后分布，提示高光溢出、噪声/纹理及过强增益。分离基于共同与通道相对的 RGB 对数增益，不保证严格保持 CIE 亮度；噪声指标不是传感器读出噪声实测。
+- **Flat field: Roll → Optics.** Total, brightness and color strengths range from 0–200%, default 100%; component strengths multiply the total. Analyze Flat Field compares maps on fixed scales and warns about clipping, noise/texture and excessive gain. The split uses common and relative RGB log-gain, not strict CIE luminance preservation or a sensor read-noise measurement.
+- **色差：整卷 → 光学 → 校准镜头色差…（实验性）。** 使用覆盖中心与四角的中性黑白细节靶，保持实际相机、镜头、光圈、对焦距离、倍率与裁切模式。测量后检查四角，验证通过才保存。不要用裸光源平场图或彩色负片校准。
+- **CA: Roll → Optics → Calibrate Lens CA… (experimental).** Use a neutral black-and-white textured reference covering the center and corners, matching the actual camera, lens, aperture, focus distance, magnification and crop mode. Measure, inspect corners and save only a validated fit. Do not use a flat light field or color negative.
+- 这是红、蓝通道相对绿色的几何重映射，不是去紫边。当前仅支持普通单帧 RGB，不支持拼接、HDR、三色合成及 RGB+IR；不修复轴向色差失焦、偏心/切向误差或已丢失细节。没有预置 LAOWA 镜头实测配置。
+- This remaps red/blue geometry relative to green, not desaturation or defringing. Ordinary single-frame RGB only; no stitch, HDR, trichrome or RGB+IR support. It does not fix axial blur, decentering/tangential errors or lost detail. No measured LAOWA lens profile is supplied.
+
+![平场分析：合成参考 / Flat-field analysis: synthetic reference](docs/media/custom-r8/flatfield-analysis.png)
+
+![色差校准：合成演示，非镜头实测 / CA calibration: synthetic demonstration, not a measured lens profile](docs/media/custom-r8/lens-ca-calibration.png)
+
+## 安装、升级与备份 / Installation, updates and backup
+
+Apple Silicon Mac 专用构建。安装前退出全部 NegPy，备份用户目录（通常为 `~/Documents/NegPy`），保留旧 App。本地包使用临时签名，未经 Apple 公证；不要同时运行共用数据库的多个版本。
+
+For Apple Silicon Macs. Quit every NegPy instance, back up the user directory (normally `~/Documents/NegPy`) and retain the old app. Local packages are ad-hoc signed, not Apple-notarized. Do not run multiple versions against the same database.
+
+平场配置在 `flatfield`，镜头配置在 `lens_ca`，镜头系数也保存在编辑参数中。升级保留数据不代表官方版会执行定制功能：仍需移植代码并重新验证；旧版重新保存编辑可能丢失未知字段。相机依赖随包提供，不代表 A1/M11 已通过实机联机验证。
+
+Profiles live in `flatfield` and `lens_ca`; lens coefficients also persist in edits. Keeping data does not make official builds execute custom features: code still needs porting and validation. Older builds can discard unknown fields when re-saving. Bundled camera dependencies do not imply real-device A1/M11 tethering validation.
+
+## 源码构建 / Build from source
+
+需要 Apple Silicon Mac、Python 3.13、`uv`。始终使用独立开发用户目录。此入口只打包，不自动安装。
+
+Requires an Apple Silicon Mac, Python 3.13 and `uv`. Always use an isolated development user directory. This entry point builds without installing.
+
+```sh
+uv sync --locked --group camera
+NEGPY_USER_DIR=/private/tmp/negpy-development uv run --no-sync python -m scripts.build_apple_silicon --output /absolute/path/to/output
+```
+
+`third_party` 包含匹配运行库、源代码归档与许可证。`apple-silicon-build` 是历史资料，部分脚本会替换 App 或使用旧链接方式，不应直接执行；当前入口为 `scripts/build_apple_silicon.py`。
+
+`third_party` contains the matching runtime, source archives and licenses. `apple-silicon-build` is historical material; some scripts replace an app or use old linking methods. Do not execute them directly; use `scripts/build_apple_silicon.py`.
+
+## 致谢与贡献 / Credits and contributions
+
+感谢 NegPy 原作者与贡献者。保留 [GPL-3.0](LICENSE) 及第三方许可证。代码整理和部分实现使用 AI 编程辅助并经过本地测试，不代表上游认可。向上游贡献时应分别提交平场、性能、色差和术语改动，而非整包快照。
+
+Thanks to the upstream author and contributors. [GPL-3.0](LICENSE) and third-party licenses are retained. Code preparation and parts of the implementation used AI coding assistance and local testing; this does not imply upstream endorsement. Propose flat-field, performance, CA and terminology changes separately rather than submitting the entire snapshot upstream.
+
+---
+
+## 原项目介绍（保留原文）/ Original upstream introduction
+
 <div align="center">
   <img src="media/icons/icon.svg" width="96" height="96" alt="NegPy Logo"><h1>NegPy</h1>
 

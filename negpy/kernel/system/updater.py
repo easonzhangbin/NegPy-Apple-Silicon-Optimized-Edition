@@ -57,6 +57,9 @@ class UpdateInfo:
 
     @property
     def can_self_install(self) -> bool:
+        bundle = getattr(sys, "_MEIPASS", None)
+        if bundle and (Path(bundle) / "BUILD_VARIANT.json").is_file():
+            return False
         return bool(self.download_url) and bool(install_kind())
 
 
