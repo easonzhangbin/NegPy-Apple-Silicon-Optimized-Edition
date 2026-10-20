@@ -3,6 +3,10 @@
 
 **非官方定制版 / Unofficial custom build**
 
+> 下载状态：源码和说明已公开；预览版页面已建立，但网页大附件上传失败，DMG 安装包暂未上线。可通过 Code → Download ZIP 下载源码。
+>
+> Download status: source and documentation are public. The preview release exists, but large-attachment uploads failed, so the DMG is not available yet. Use Code → Download ZIP for source.
+
 本仓库提供基于 [marcinz606/NegPy](https://github.com/marcinz606/NegPy) 的 **0.65.0 / r8** 定制快照，不是官方 0.66.0，也不代表已包含官方主分支所有新改动。原作者、贡献者及许可证保持不变。
 
 This repository publishes the locally validated **0.65.0 / r8** custom snapshot of [marcinz606/NegPy](https://github.com/marcinz606/NegPy). It is not an official 0.66.0 release and does not claim every newer upstream-main change. Upstream authorship, credits and licenses remain intact.
