@@ -26,9 +26,9 @@ Tested on an M1 Max / 64 GB / macOS arm64 system, not every M-series device. Thi
 | 平场亮度偏差 P95 / Brightness deviation P95 | 0.393 EV | 0.031 EV |
 | 平场色彩偏差 P95 / Color deviation P95 | 0.133 EV | 0.005 EV |
 
-色差使用已知径向变形的合成中性纹理，绿色保持不变。平场使用已知渐变与色偏的合成参考。这不是实际 LAOWA 镜头的标定；不包含用户真实照片。
+上表色差测试使用已知径向变形的合成中性纹理，绿色保持不变；平场测试使用已知渐变与色偏的合成参考，不是实际 LAOWA 镜头的标定。README 的平场图片另采用用户提供的实际使用截图，包含照片背景；截图不替代上述合成测试，也不代表真实镜头色差校准已经验证。
 
-CA uses synthetic neutral texture with known radial deformation; green stays unchanged. Flat-field uses synthetic brightness and color gradients. These are not real LAOWA lens measurements and contain no real user photographs.
+The table uses synthetic neutral texture with known radial deformation for CA, with green unchanged, and synthetic brightness/color gradients for flat-field. These are not real LAOWA lens measurements. The README separately shows a user-provided actual flat-field usage screenshot with a photograph in the background; it does not replace these synthetic tests or establish real-lens CA validation.
 
 ## 安装包 / Local package
 

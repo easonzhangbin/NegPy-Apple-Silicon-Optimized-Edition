@@ -36,7 +36,7 @@ Metal/WebGPU is an existing upstream feature. Flat-field and measured CA run on 
 - 这是红、蓝通道相对绿色的几何重映射，不是去紫边。当前仅支持普通单帧 RGB，不支持拼接、HDR、三色合成及 RGB+IR；不修复轴向色差失焦、偏心/切向误差或已丢失细节。没有预置 LAOWA 镜头实测配置。
 - This remaps red/blue geometry relative to green, not desaturation or defringing. Ordinary single-frame RGB only; no stitch, HDR, trichrome or RGB+IR support. It does not fix axial blur, decentering/tangential errors or lost detail. No measured LAOWA lens profile is supplied.
 
-![平场分析：合成参考 / Flat-field analysis: synthetic reference](docs/media/custom-r8/flatfield-analysis.png)
+![平场分析：实际使用截图 / Flat-field analysis: actual usage screenshot](docs/media/custom-r8/flatfield-analysis.png)
 
 ![色差校准：合成演示，非镜头实测 / CA calibration: synthetic demonstration, not a measured lens profile](docs/media/custom-r8/lens-ca-calibration.png)
 
