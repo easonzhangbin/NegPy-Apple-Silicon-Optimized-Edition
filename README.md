@@ -22,6 +22,8 @@
   [![Discord](https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/JySNzUWgwy)
 </div>
 
+**Apple Silicon 优化版 / Apple Silicon Optimized Edition:** [中英文更新说明 / Bilingual update notes](README.APPLE_SILICON.md)
+
 NegPy turns scans of film negatives and slides into finished pictures. I wrote it because I wanted a tool made for film scans that does more than invert them. It models film and photographic paper, and adds the conveniences of a lab scanner. It runs on Linux, macOS and Windows. 
 
 ![NegPy main window](docs/media/0670.webp)

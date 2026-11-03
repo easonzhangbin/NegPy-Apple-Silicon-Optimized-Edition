@@ -1,6 +1,6 @@
 import numpy as np
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from negpy.services.rendering.image_processor import ImageProcessor
 from negpy.domain.models import WorkspaceConfig
@@ -11,6 +11,7 @@ def test_large_preview_uses_memory_bounded_gpu_tiling() -> None:
     service = ImageProcessor()
     result = np.full((4, 6, 3), 0.25, dtype=np.float32)
     gpu = SimpleNamespace(
+        gpu=SimpleNamespace(adapter=SimpleNamespace(info={"backend_type": "Vulkan"})),
         requires_tiling=MagicMock(return_value=True),
         process=MagicMock(return_value=(result, {"path": "tiled"})),
         process_to_texture=MagicMock(),
@@ -31,11 +32,21 @@ def test_large_preview_uses_memory_bounded_gpu_tiling() -> None:
     assert gpu.process.call_args.kwargs["memory_bounded"] is True
     gpu.process_to_texture.assert_not_called()
 
+    gpu.gpu.adapter.info["backend_type"] = "Metal"
+    from negpy.kernel.system import apple_silicon
+
+    with patch.object(apple_silicon, "retain_source_tiles", return_value=True):
+        service.run_pipeline(np.full((4, 6, 3), 0.5, dtype=np.float32), WorkspaceConfig(), "metal", render_size_ref=6.0)
+    assert gpu.process.call_args.kwargs["reuse_source_tiles"] is True
+    assert gpu.process.call_args.kwargs["memory_bounded"] is False
+
 
 def test_gpu_failure_releases_partial_allocations_before_cpu_fallback() -> None:
     service = ImageProcessor()
     gpu = SimpleNamespace(
         requires_tiling=MagicMock(return_value=False),
+        release_tiled_sources=MagicMock(),
+        evict_stale_textures=MagicMock(),
         process_to_texture=MagicMock(side_effect=RuntimeError("out of memory")),
         cleanup=MagicMock(),
     )

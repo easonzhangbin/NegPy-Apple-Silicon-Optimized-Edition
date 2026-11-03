@@ -925,6 +925,10 @@ class ImageProcessor:
             try:
                 with timing.step("GPU"):
                     if needs_tiling:
+                        from negpy.kernel.system.apple_silicon import retain_source_tiles
+
+                        adapter = self.engine_gpu.gpu.adapter
+                        keep_tiles = adapter is not None and adapter.info.get("backend_type") == "Metal" and retain_source_tiles(img.nbytes)
                         processed, gpu_metrics = self.engine_gpu.process(
                             img,
                             settings,
@@ -936,10 +940,12 @@ class ImageProcessor:
                             camera_wb=camera_wb,
                             film_base=film_base,
                             source_base_log=source_base,
-                            memory_bounded=True,
+                            memory_bounded=not keep_tiles,
+                            reuse_source_tiles=keep_tiles,
                             render_size_ref=render_size_ref,
                         )
                     else:
+                        self.engine_gpu.release_tiled_sources()
                         self.engine_gpu.evict_stale_textures(destroy=False)
                         processed, gpu_metrics = self.engine_gpu.process_to_texture(
                             img,

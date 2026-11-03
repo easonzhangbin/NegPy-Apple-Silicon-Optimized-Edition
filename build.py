@@ -8,7 +8,7 @@ import subprocess
 import PyInstaller.__main__
 
 # Define the application name
-APP_NAME = "NegPy"
+APP_NAME = os.environ.get("NEGPY_APP_NAME", "NegPy")
 
 # Read version
 VERSION = "dev"
@@ -17,7 +17,7 @@ if os.path.exists("VERSION"):
         VERSION = f.read().strip()
 
 # Define the entry point
-ENTRY_POINT = "desktop.py"
+ENTRY_POINT = os.environ.get("NEGPY_ENTRY_POINT", "desktop.py")
 
 # Define platform-specific settings
 system = platform.system()
@@ -160,6 +160,8 @@ elif is_macos:
 
     macos_target_arch = get_macos_target_arch()
     params.append(f"--target-arch={macos_target_arch}")
+    if bundle_id := os.environ.get("NEGPY_MACOS_BUNDLE_ID"):
+        params.append(f"--osx-bundle-identifier={bundle_id}")
 
 
 def package_linux():

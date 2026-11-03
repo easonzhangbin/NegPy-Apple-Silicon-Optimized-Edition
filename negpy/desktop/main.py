@@ -232,6 +232,9 @@ def main() -> None:
     _install_exception_hook()  # log unhandled slot exceptions to negpy.log instead of aborting
 
     try:
+        from negpy.kernel.system.apple_silicon import apply_cache_defaults
+
+        apply_cache_defaults(APP_CONFIG)
         apply_override(override_cfg, APP_CONFIG)
 
         try:

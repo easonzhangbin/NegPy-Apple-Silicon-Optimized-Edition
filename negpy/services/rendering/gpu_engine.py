@@ -3,6 +3,7 @@ import math
 import os
 import struct
 import time
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import negpy_core
@@ -408,6 +409,10 @@ class GPUEngine:
         self._clip_cache: Optional[tuple] = None
         # (key, prefiltered grid, clip fractions), keyed without the clip sliders.
         self._prefilter_cache: Optional[tuple] = None
+        self._tiled_ref_caches: tuple = (None, None, None)
+        self._tiled_meter_cache: Optional[tuple] = None
+        self._tiled_small: Optional[tuple] = None
+        self._resident_tiles: Optional[tuple] = None
         self._last_settings: Optional[WorkspaceConfig] = None
         self._last_targets_rev: int = -1
         self._last_scale_factor: float = 1.0
@@ -691,6 +696,7 @@ class GPUEngine:
         # Crop tool preview: toning and finish span the whole rotated frame, with no border or
         # carrier; the meter, contrast mask and active_roi stay on the crop, as in the CPU engine.
         full_frame: bool = False,
+        source_texture: Optional[GPUTexture] = None,
     ) -> Tuple[Any, Dict[str, Any]]:
         """
         Executes the full pipeline, returning a GPU texture and associated metrics.
@@ -710,15 +716,21 @@ class GPUEngine:
 
         h, w = img.shape[:2]
         k1_eff = settings.geometry.distortion_k1
-        source_tex = self._get_intermediate_texture(
-            w,
-            h,
-            wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST,
-            "source",
-        )
+        if source_texture is not None:
+            # A tile whose pixels already sit on the GPU (see _process_tiled): bind, don't upload.
+            source_tex = source_texture
+        else:
+            source_tex = self._get_intermediate_texture(
+                w,
+                h,
+                wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST,
+                "source",
+            )
 
         # Only upload if the source content has changed
-        if source_hash is None or source_hash != self._current_source_hash:
+        if source_texture is not None:
+            start_stage = 0
+        elif source_hash is None or source_hash != self._current_source_hash:
             source_tex.upload(img)
             self._current_source_hash = source_hash
             start_stage = 0
@@ -2769,6 +2781,7 @@ class GPUEngine:
         render_size_ref: Optional[float] = None,
         film_base: Optional[tuple] = None,
         source_base_log: Any = NOT_READ,
+        reuse_source_tiles: bool = False,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """High-level processing entry point with automatic tiling."""
         self._init_resources()
@@ -2786,6 +2799,8 @@ class GPUEngine:
                 render_size_ref=render_size_ref,
                 film_base=film_base,
                 source_base_log=source_base_log,
+                analysis_source_hash=analysis_source_hash,
+                reuse_source_tiles=reuse_source_tiles and analysis_source_hash is not None and not memory_bounded,
             )
         tex_final, metrics = self.process_to_texture(
             img,
@@ -2818,6 +2833,8 @@ class GPUEngine:
         memory_bounded: bool = False,
         render_size_ref: Optional[float] = None,
         source_base_log: Any = NOT_READ,
+        analysis_source_hash: Optional[str] = None,
+        reuse_source_tiles: bool = False,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Processes ultra-high resolution images using memory-efficient tiling."""
         h, w = img.shape[:2]
@@ -2867,12 +2884,18 @@ class GPUEngine:
             )
 
         preview_scale = APP_CONFIG.preview_render_size / max(h, w)
-        img_small = negpy_core.resize_linear(np.ascontiguousarray(img, dtype=np.float32), (int(w * preview_scale), int(h * preview_scale)))
+        small_dims = (max(1, int(w * preview_scale)), max(1, int(h * preview_scale)))
+        small_key = (analysis_source_hash, img.shape, small_dims)
+        if analysis_source_hash is not None and self._tiled_small is not None and self._tiled_small[0] == small_key:
+            img_small = self._tiled_small[1]
+        else:
+            img_small = negpy_core.resize_linear(np.ascontiguousarray(img, dtype=np.float32), small_dims)
+            self._tiled_small = (small_key, img_small) if analysis_source_hash is not None else None
 
         # This render meters the whole frame for the tiles; the CLAHE CDF it leaves behind
         # is the one they share. Taken from here rather than from the last preview, which
         # may belong to another image or to settings the export has since moved past.
-        with timing.step("reference pass"):
+        with timing.step("reference pass"), self._reference_meter_cache(analysis_source_hash):
             _, metrics_ref = self.process_to_texture(
                 img_small,
                 settings,
@@ -2883,6 +2906,7 @@ class GPUEngine:
                 apply_layout=False,
                 film_base=film_base,
                 source_base_log=source_base_log,
+                analysis_source_hash=None if analysis_source_hash is None else f"{analysis_source_hash}\x00tiled-ref",
             )
 
         global_cdfs = self._readback_clahe_cdf()
@@ -2965,53 +2989,109 @@ class GPUEngine:
                 sorted_grid=_sorted(),
             )
 
-        if bounds_override:
-            global_bounds = global_anchor_bounds = bounds_override
-        else:
-            global_bounds, global_base_bounds = resolve_bounds_detailed(settings.process, _analyze_global_bounds)
-            global_anchor_bounds = luma_source_bounds(settings.process, global_base_bounds)
-
-        # The meters follow process_to_texture's: the transfer curve reads working space
-        # against the fixed window.
-        transfer = render_path(settings.process) is not RenderPath.PRINT
-        transfer_grid: Optional[np.ndarray] = None
-
-        def _meter_grid() -> np.ndarray:
-            nonlocal transfer_grid
-            if not transfer:
-                return _prefiltered()
-            if transfer_grid is None:
-                cam_m = camera_to_working_matrix(cam_xyz, camera_wb if should_fold_camera_wb(settings.process) else None)
-                transfer_grid = (
-                    _prefiltered()
-                    if cam_m is None
-                    else unmix_log_image(prefilter_log_grid(apply_camera_matrix(_analysis_img(), cam_m), meter_roi, meter_buffer), unmix_m)
-                )
-            return transfer_grid
-
-        meter_bounds = LogNegativeBounds(*transfer_bounds()) if transfer else global_anchor_bounds
-
-        global_neutral_axis = None
-        if settings.exposure.cast_removal_strength > 0.0 and settings.process.process_mode != ProcessMode.BW:
-            axis_bounds = meter_bounds if transfer else global_bounds
-            global_neutral_axis = measure_neutral_axis_from_log(_meter_grid(), axis_bounds, None, 0.0, exclude_subjects=not transfer)
-            pooled_axis = pooled_neutral_axis(settings.process)
-            if pooled_axis is not None:
-                global_neutral_axis = blend_neutral_axis(global_neutral_axis, pooled_axis)
-
-        global_metered_anchor = None
-        if settings.exposure.auto_exposure or (transfer and settings.exposure.auto_normalize_contrast):
-            global_metered_anchor = measure_anchor_from_log(
-                _meter_grid(), meter_bounds, None, 0.0, assumed=transfer_assumed_anchor() if transfer else None
+        # The whole-frame meters read only the source, the process and geometry settings and
+        # the metered region, never the creative exposure sliders: measure them once per
+        # identity, so an HQ slider release re-renders the tiles without re-metering.
+        meter_key = None
+        if analysis_source_hash is not None and not bounds_override:
+            e = settings.exposure
+            meter_key = (
+                analysis_source_hash,
+                img.shape,
+                settings.process,
+                settings.geometry,
+                e.cast_removal_strength > 0.0,
+                e.auto_exposure,
+                e.auto_normalize_contrast,
+                exposure_models.TARGETS_REVISION,
+                film_base,
+                repr(source_base_log),
+                meter_roi,
+                meter_buffer,
+                analysis_shape,
+                None if cam_xyz is None else tuple(np.asarray(cam_xyz, dtype=np.float64).ravel().tolist()),
+                None if camera_wb is None else tuple(float(v) for v in camera_wb),
             )
+        cached_meters = (
+            self._tiled_meter_cache[1]
+            if meter_key is not None and self._tiled_meter_cache is not None and self._tiled_meter_cache[0] == meter_key
+            else None
+        )
+        transfer = render_path(settings.process) is not RenderPath.PRINT
+        if cached_meters is not None:
+            (
+                global_bounds,
+                global_anchor_bounds,
+                global_neutral_axis,
+                global_metered_anchor,
+                global_textural_range,
+                global_shadow_point,
+                global_highlight_point,
+            ) = cached_meters
+        else:
+            if bounds_override:
+                global_bounds = global_anchor_bounds = bounds_override
+            else:
+                global_bounds, global_base_bounds = resolve_bounds_detailed(settings.process, _analyze_global_bounds)
+                global_anchor_bounds = luma_source_bounds(settings.process, global_base_bounds)
 
-        global_textural_range = None
-        global_shadow_point = None
-        global_highlight_point = None
-        if settings.exposure.auto_normalize_contrast:
-            global_textural_range = measure_textural_range_from_log(_meter_grid(), None, 0.0)
-            global_shadow_point = measure_shadow_point_from_log(_meter_grid(), meter_bounds, None, 0.0)
-            global_highlight_point = measure_highlight_point_from_log(_meter_grid(), meter_bounds, None, 0.0)
+            # The meters follow process_to_texture's: the transfer curve reads working space
+            # against the fixed window.
+            transfer = render_path(settings.process) is not RenderPath.PRINT
+            transfer_grid: Optional[np.ndarray] = None
+
+            def _meter_grid() -> np.ndarray:
+                nonlocal transfer_grid
+                if not transfer:
+                    return _prefiltered()
+                if transfer_grid is None:
+                    cam_m = camera_to_working_matrix(cam_xyz, camera_wb if should_fold_camera_wb(settings.process) else None)
+                    transfer_grid = (
+                        _prefiltered()
+                        if cam_m is None
+                        else unmix_log_image(
+                            prefilter_log_grid(apply_camera_matrix(_analysis_img(), cam_m), meter_roi, meter_buffer), unmix_m
+                        )
+                    )
+                return transfer_grid
+
+            meter_bounds = LogNegativeBounds(*transfer_bounds()) if transfer else global_anchor_bounds
+
+            global_neutral_axis = None
+            if settings.exposure.cast_removal_strength > 0.0 and settings.process.process_mode != ProcessMode.BW:
+                axis_bounds = meter_bounds if transfer else global_bounds
+                global_neutral_axis = measure_neutral_axis_from_log(_meter_grid(), axis_bounds, None, 0.0, exclude_subjects=not transfer)
+                pooled_axis = pooled_neutral_axis(settings.process)
+                if pooled_axis is not None:
+                    global_neutral_axis = blend_neutral_axis(global_neutral_axis, pooled_axis)
+
+            global_metered_anchor = None
+            if settings.exposure.auto_exposure or (transfer and settings.exposure.auto_normalize_contrast):
+                global_metered_anchor = measure_anchor_from_log(
+                    _meter_grid(), meter_bounds, None, 0.0, assumed=transfer_assumed_anchor() if transfer else None
+                )
+
+            global_textural_range = None
+            global_shadow_point = None
+            global_highlight_point = None
+            if settings.exposure.auto_normalize_contrast:
+                global_textural_range = measure_textural_range_from_log(_meter_grid(), None, 0.0)
+                global_shadow_point = measure_shadow_point_from_log(_meter_grid(), meter_bounds, None, 0.0)
+                global_highlight_point = measure_highlight_point_from_log(_meter_grid(), meter_bounds, None, 0.0)
+
+            if meter_key is not None:
+                self._tiled_meter_cache = (
+                    meter_key,
+                    (
+                        global_bounds,
+                        global_anchor_bounds,
+                        global_neutral_axis,
+                        global_metered_anchor,
+                        global_textural_range,
+                        global_shadow_point,
+                        global_highlight_point,
+                    ),
+                )
 
         global_mask = None
         if settings.exposure.contrast_mask_strength > 0.0 and render_path(settings.process) is RenderPath.PRINT:
@@ -3092,6 +3172,31 @@ class GPUEngine:
         tile_index = 0
         pooled_shape: Optional[tuple] = None  # low VRAM: the one tile input shape the pool holds
         timing.lap("global bounds/setup")
+        resident = None
+        if reuse_source_tiles and not low_vram:
+            geometry = settings.geometry
+            layout_key = (
+                analysis_source_hash,
+                img.shape,
+                (
+                    geometry.rotation,
+                    geometry.flip_horizontal,
+                    geometry.flip_vertical,
+                    geometry.fine_rotation,
+                    k1_eff,
+                    geometry.converge_v,
+                    geometry.converge_h,
+                ),
+                (x1, y1, crop_w, crop_h),
+                halo,
+                tile_size,
+            )
+            if self._resident_tiles is None or self._resident_tiles[0] != layout_key:
+                self._drop_resident_tiles()
+                self._resident_tiles = (layout_key, {})
+            resident = self._resident_tiles[1]
+        else:
+            self._drop_resident_tiles()
         with timing.step("tiles"):
             for ty in range(0, crop_h, tile_size):
                 for tx in range(0, crop_w, tile_size):
@@ -3106,6 +3211,16 @@ class GPUEngine:
                     if low_vram and pooled_shape not in (None, (iy2 - iy1, ix2 - ix1)):
                         self._release_texture_pool()
                     pooled_shape = (iy2 - iy1, ix2 - ix1)
+                    tile_src = None
+                    if resident is not None:
+                        tile_src = resident.get((iy1, iy2, ix1, ix2))
+                        if tile_src is None:
+                            tile_src = GPUTexture(
+                                ix2 - ix1, iy2 - iy1, usage=wgpu.TextureUsage.TEXTURE_BINDING | wgpu.TextureUsage.COPY_DST
+                            )
+                            tile_src.upload(img_rot[iy1:iy2, ix1:ix2])
+                            tile_src._rgba_scratch = None
+                            resident[(iy1, iy2, ix1, ix2)] = tile_src
                     tile_res, _ = self.process_to_texture(
                         img_rot[iy1:iy2, ix1:ix2],
                         settings,
@@ -3128,6 +3243,7 @@ class GPUEngine:
                         contrast_mask_override=global_mask,
                         sabattier_sigma_override=sabattier_sigma,
                         diffusion_override=global_diffusion,
+                        source_texture=tile_src,
                     )
                     handle = self._submit_readback(tile_res, slot=0 if low_vram else tile_index % 2)
                     if low_vram:
@@ -3165,6 +3281,32 @@ class GPUEngine:
         metrics_ref["content_rect"] = (off_x, off_y, content_w, content_h)
         return result, metrics_ref
 
+    @contextmanager
+    def _reference_meter_cache(self, identity):
+        if identity is None:
+            yield
+            return
+        outer = (self._analysis_cache, self._clip_cache, self._prefilter_cache)
+        self._analysis_cache, self._clip_cache, self._prefilter_cache = self._tiled_ref_caches
+        try:
+            yield
+        finally:
+            self._tiled_ref_caches = (self._analysis_cache, self._clip_cache, self._prefilter_cache)
+            self._analysis_cache, self._clip_cache, self._prefilter_cache = outer
+
+    def release_tiled_sources(self) -> None:
+        self._drop_resident_tiles()
+        self._tiled_small = None
+        self._tiled_ref_caches = (None, None, None)
+        self._tiled_meter_cache = None
+
+    def _drop_resident_tiles(self) -> None:
+        if self._resident_tiles is not None:
+            for tex in self._resident_tiles[1].values():
+                tex.destroy()
+            self._resident_tiles = None
+            self._bind_group_cache.clear()
+
     def cleanup(self, collect: bool = True, retain: Optional[GPUTexture] = None) -> None:
         """Evacuates the texture pool; optionally forces garbage collection.
 
@@ -3172,6 +3314,7 @@ class GPUEngine:
         next render allocates a fresh one rather than painting over borrowed pixels.
         """
         self._release_texture_pool(retain)
+        self.release_tiled_sources()
         self._bind_layout_cache.clear()
         self._uv_grid_cache = None
         # The stage textures a resume would paint onto are gone, local_ev included, so the

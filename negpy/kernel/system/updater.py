@@ -62,7 +62,7 @@ class UpdateInfo:
 
 def install_kind() -> str:
     """Which installer produced the running copy, or "" when it cannot self update."""
-    if not getattr(sys, "frozen", False):
+    if os.environ.get("NEGPY_CUSTOM_EDITION") == "1" or not getattr(sys, "frozen", False):
         return ""
     if sys.platform == "win32":
         return NSIS
