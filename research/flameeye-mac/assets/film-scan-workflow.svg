@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="792" viewBox="0 0 1240 792" role="img" aria-labelledby="diagram-title diagram-desc">
+  <title id="diagram-title">Flameeye and NegPy film-scanning workflow / 火眼与 NegPy 三色翻拍流程</title>
+  <desc id="diagram-desc">Flameeye on macOS pairs a through-film spectrum from the P32 USB spectrometer with three separate camera response values from the selected NegPy 0.67 trichrome files. A read-only bridge opens the session and selected files. The paired observations guide lamp adjustment. Reshoot all three exposures to verify, then save a named profile for reuse. 火眼 macOS 将 P32 的透片光谱与 NegPy 0.67 所选红、绿、蓝实拍文件的三个相机响应配对。会话与文件以只读方式打开。根据结果调灯，重拍三张验证后保存具名配平。</desc>
+
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#102531"/>
+      <stop offset="0.53" stop-color="#101925"/>
+      <stop offset="1" stop-color="#171b2d"/>
+    </linearGradient>
+    <linearGradient id="pairing" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#163444"/>
+      <stop offset="1" stop-color="#1a273d"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#77e1c9"/>
+      <stop offset="0.56" stop-color="#7abde9"/>
+      <stop offset="1" stop-color="#baa5ff"/>
+    </linearGradient>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; fill: #eef6fc; }
+      .eyebrow { fill: #8ce6d2; font-size: 13px; font-weight: 700; letter-spacing: 2.4px; }
+      .hero { font-size: 43px; font-weight: 720; letter-spacing: -1.2px; }
+      .subhead { fill: #c1d4e6; font-size: 24px; font-weight: 530; }
+      .heading { font-size: 22px; font-weight: 700; }
+      .zh-heading { fill: #bed4e7; font-size: 16px; font-weight: 600; }
+      .body { fill: #dbe8f3; font-size: 15px; }
+      .zh-body { fill: #b9cddd; font-size: 14px; }
+      .path-label { fill: #b9d1e3; font-size: 13px; font-weight: 600; }
+      .panel { fill: #182736; stroke: #3c5368; stroke-width: 1; }
+      .line { fill: none; stroke: #9cb8cc; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+      .step-no { fill: #89e1d2; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1238" height="790" rx="24" fill="url(#background)" stroke="#394d61" stroke-width="2"/>
+  <rect x="54" y="40" width="44" height="4" rx="2" fill="url(#accent)"/>
+  <text class="eyebrow" x="54" y="70">FLAMEEYE × NEGPY 0.67</text>
+  <text class="hero" x="54" y="119">Repeatable RGB film scanning</text>
+  <text class="subhead" x="54" y="153" lang="zh-CN">用光谱测量复现三色分拍灯光</text>
+
+  <g>
+    <rect class="panel" x="54" y="183" width="544" height="133" rx="15"/>
+    <rect x="73" y="203" width="39" height="39" rx="9" fill="#21433f" stroke="#4b8c83"/>
+    <path d="M83 225h5l3-8 4 12 4-8h4" fill="none" stroke="#91edda" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="heading" x="127" y="221">P32 USB spectrometer</text>
+    <text class="zh-heading" x="127" y="244" lang="zh-CN">P32 USB 光谱仪</text>
+    <text class="body" x="74" y="276">Through-film spectrum with band shares and total signal</text>
+    <text class="zh-body" x="74" y="299" lang="zh-CN">经片基采集光谱，得到各波段份额和积分总量</text>
+  </g>
+
+  <g>
+    <rect class="panel" x="642" y="183" width="544" height="133" rx="15"/>
+    <rect x="661" y="203" width="39" height="39" rx="9" fill="#302b50" stroke="#7266a9"/>
+    <rect x="671" y="213" width="12" height="15" rx="2" fill="none" stroke="#eea3ab" stroke-width="1.3"/>
+    <rect x="675" y="216" width="12" height="15" rx="2" fill="#302b50" stroke="#a5e8be" stroke-width="1.3"/>
+    <rect x="679" y="219" width="12" height="15" rx="2" fill="#302b50" stroke="#a7bbff" stroke-width="1.3"/>
+    <text class="heading" x="715" y="221">NegPy 0.67 trichrome session</text>
+    <text class="zh-heading" x="715" y="244" lang="zh-CN">NegPy 0.67 三色分拍会话</text>
+    <text class="body" x="662" y="276">Selected R/G/B files with one camera response per exposure</text>
+    <text class="zh-body" x="662" y="299" lang="zh-CN">读取所选三张实拍文件，每张取对应相机通道的响应</text>
+  </g>
+
+  <path class="line" d="M324 317V382m-5-7 5 7 5-7"/>
+  <text class="path-label" x="339" y="355">USB link / USB 连接</text>
+  <path class="line" d="M914 317V382m-5-7 5 7 5-7"/>
+  <text class="path-label" x="931" y="349">Read-only session and file bridge</text>
+  <text class="path-label" x="931" y="368" lang="zh-CN">只读会话与文件桥接</text>
+
+  <g>
+    <rect x="54" y="385" width="1132" height="141" rx="16" fill="url(#pairing)" stroke="#5b839c" stroke-width="1.2"/>
+    <rect x="76" y="406" width="4" height="98" rx="2" fill="url(#accent)"/>
+    <text class="heading" x="100" y="435">Flameeye macOS</text>
+    <text class="zh-heading" x="100" y="460" lang="zh-CN">火眼 macOS</text>
+    <text class="path-label" x="100" y="487">P32 + CAMERA / 光谱与相机</text>
+    <path d="M345 411v89" stroke="#4c6479" stroke-width="1"/>
+    <text class="heading" x="374" y="434">Pair the spectrum and the three camera responses</text>
+    <text class="zh-heading" x="374" y="459" lang="zh-CN">在相同片基和灯光条件下配对光谱与三个相机响应</text>
+    <text class="body" x="374" y="483">Estimate spectral share targets for the three separate exposures.</text>
+    <text class="zh-body" x="374" y="505" lang="zh-CN">据此反推三色分拍的波段份额目标。</text>
+  </g>
+
+  <path class="line" d="M233 527V568m-5-7 5 7 5-7"/>
+
+  <g>
+    <rect class="panel" x="54" y="571" width="358" height="142" rx="15"/>
+    <text class="step-no" x="73" y="597">01</text>
+    <text class="heading" x="73" y="626">Adjust the RGB lamps</text>
+    <text class="zh-heading" x="73" y="649" lang="zh-CN">调节红、绿、蓝灯</text>
+    <text class="body" x="73" y="678">Follow the live P32 band-share targets.</text>
+    <text class="zh-body" x="73" y="699" lang="zh-CN">对照 P32 实时波段份额目标调灯。</text>
+  </g>
+
+  <path class="line" d="M415 641H438m-6-4 6 4-6 4"/>
+
+  <g>
+    <rect class="panel" x="441" y="571" width="358" height="142" rx="15"/>
+    <text class="step-no" x="460" y="597">02</text>
+    <text class="heading" x="460" y="626">Reshoot and verify</text>
+    <text class="zh-heading" x="460" y="649" lang="zh-CN">重拍三张并验证</text>
+    <text class="body" x="460" y="678">Check three new exposures in NegPy.</text>
+    <text class="zh-body" x="460" y="699" lang="zh-CN">用 NegPy 核对三张新实拍的曝光。</text>
+  </g>
+
+  <path class="line" d="M802 641H825m-6-4 6 4-6 4"/>
+
+  <g>
+    <rect class="panel" x="828" y="571" width="358" height="142" rx="15"/>
+    <text class="step-no" x="847" y="597">03</text>
+    <text class="heading" x="847" y="626">Save a named profile</text>
+    <text class="zh-heading" x="847" y="649" lang="zh-CN">保存具名配平</text>
+    <text class="body" x="847" y="678">Reuse the P32 reference or export the record.</text>
+    <text class="zh-body" x="847" y="699" lang="zh-CN">再次调用 P32 参考，或导出配平记录。</text>
+  </g>
+
+  <path class="line" d="M619 714v27H232v-25" stroke-dasharray="4 4"/>
+  <path class="line" d="M228 722l4-6 4 6"/>
+  <text class="path-label" x="425" y="762" text-anchor="middle">Adjust again if needed / 需要时继续调灯复拍</text>
+</svg>
