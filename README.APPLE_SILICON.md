@@ -36,3 +36,7 @@ Run focused verification on an Apple Silicon Mac:
 ```sh
 QT_QPA_PLATFORM=offscreen uv run --locked pytest -q tests/test_apple_silicon.py tests/test_gpu_tiled_parity.py tests/test_gpu_tiled_pool_reuse.py tests/test_image_processor.py
 ```
+
+## Flameeye research companion
+
+Use the [Flameeye P32 companion](research/flameeye-mac/README.md) to compare P32 spectra with NegPy trichrome exposures and archive balance measurements.
