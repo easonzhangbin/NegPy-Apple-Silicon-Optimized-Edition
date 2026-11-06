@@ -145,7 +145,7 @@ struct FilmBaseLiveReference: Codable, Sendable {
 
 private struct FilmBaseLegacyBaseline: Codable, Sendable {
     let optical: FilmBaseLiveReference
-    let report: FilmBaseNegPyVerification
+    let report: FilmBaseLegacyNegPyReport
 }
 
 struct FilmBaseSavedBalance: Identifiable, Codable, Sendable {
@@ -153,27 +153,19 @@ struct FilmBaseSavedBalance: Identifiable, Codable, Sendable {
     let name: String
     let reference: FilmBaseLiveReference
     let tolerancePercent: Int
-    let negPy: FilmBaseNegPyVerification?
+    private let negPy: FilmBaseLegacyNegPyReport?
     private let baseline: FilmBaseLegacyBaseline?
-    let verificationToleranceEV: Double?
+    private let verificationToleranceEV: Double?
 
-    init?(name: String, reference: FilmBaseLiveReference, tolerancePercent: Int,
-          negPy: FilmBaseNegPyVerification? = nil,
-          verificationToleranceEV: Double? = nil) {
+    init?(name: String, reference: FilmBaseLiveReference, tolerancePercent: Int) {
         id = UUID()
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.reference = reference
         self.tolerancePercent = tolerancePercent
-        self.negPy = negPy
+        negPy = nil
         baseline = nil
-        self.verificationToleranceEV = verificationToleranceEV
-        guard isValid, negPy == nil || verifiedByNegPy else { return nil }
-    }
-
-    var verifiedByNegPy: Bool {
-        guard let negPy, let tolerance = verificationToleranceEV,
-              negPy.meteringIssue == nil, let spread = negPy.medianSpreadEV else { return false }
-        return spread <= tolerance
+        verificationToleranceEV = nil
+        guard isValid else { return nil }
     }
 
     var isValid: Bool {

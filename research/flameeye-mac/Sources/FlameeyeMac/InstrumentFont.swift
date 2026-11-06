@@ -48,6 +48,15 @@ enum InstrumentFont {
         regularName.flatMap { NSFont(name: $0, size: points) } ?? .systemFont(ofSize: points)
     }
 
+    static func popupTitle(_ title: String, font: NSFont) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: font]
+        if font.fontName == regularName {
+            // The native popup baseline sits too high for LG1055's glyphs.
+            attributes[.baselineOffset] = -3.5
+        }
+        return NSAttributedString(string: title, attributes: attributes)
+    }
+
     private static func name(light: Bool) -> String? {
         light ? lightName ?? regularName : regularName
     }
@@ -83,7 +92,7 @@ struct InstrumentPopup<Value: Equatable>: NSViewRepresentable {
             control.addItems(withTitles: titles)
             let font = control.font ?? InstrumentFont.native(NSFont.systemFontSize)
             for item in control.itemArray {
-                item.attributedTitle = NSAttributedString(string: item.title, attributes: [.font: font])
+                item.attributedTitle = InstrumentFont.popupTitle(item.title, font: font)
             }
         }
         control.selectItem(at: context.coordinator.values.firstIndex(of: selection) ?? 0)

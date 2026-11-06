@@ -64,7 +64,7 @@ struct RGBCalibrationWindow: View {
     private var spectrumWorkspace: some View {
         Group {
             VStack(alignment: .leading, spacing: 5) {
-                Text("分别把灯切到红、绿、蓝单色。每色按空灯前、有片基、空灯后的顺序采集，保持灯档与位置一致。后两次沿用第一次的曝光时间。请让片基完全覆盖探头入光范围，并遮挡杂光。")
+                Text("分别把灯切到红、绿、蓝单色。每色三次采集都保持灯亮、灯档和位置一致。先测无片基，再放入片基，最后取出复测。后两次沿用首次曝光。让片基覆盖整个入光口，并遮挡杂光。")
                     .fixedSize(horizontal: false, vertical: true)
                 if let device, device.protocolProfile == .legacyP32 {
                     Text("P32  \(device.id)")
@@ -112,13 +112,13 @@ struct RGBCalibrationWindow: View {
                         .foregroundStyle(InstrumentColor.teal)
                     Text("衰减 \(percent(1 - result.transmission, digits: 2))")
                     Text(String(format: "%.2f 档", -log2(result.transmission)))
-                    Text("空灯变化 \(percent(result.drift, digits: 2))")
+                    Text("无片基前后变化 \(percent(result.drift, digits: 2))")
                         .foregroundStyle(InstrumentColor.secondary)
                 }
                 .font(InstrumentFont.style(.callout))
                 .accessibilityElement(children: .combine)
                 if abs(result.drift) > 0.05 {
-                    issueLabel("前后空灯积分相差超过 5%，请检查灯光和探头位置后重采。")
+                    issueLabel("无片基的前后积分相差超过 5%，请检查灯光和探头位置后重采。")
                 }
             } else if series.after != nil {
                 issueLabel("积分无有效透过率，请核对灯档、片基和曝光后重新采集。")
@@ -175,7 +175,7 @@ struct RGBCalibrationWindow: View {
                 let frames = try await capture(exposure)
                 let sample = try FilmBaseSpectrum(channel: channel, frames: frames, requireNormal: phase != .film)
                 guard sample.deviceID == device.id, exposure == nil || sample.exposureUS == exposure else {
-                    spectrumIssue = "设备或曝光与空灯基线不一致，请重新采集空灯前。"
+                    spectrumIssue = "设备或曝光与无片基首测不一致，请重新采集。"
                     return
                 }
 
@@ -220,9 +220,9 @@ struct RGBCalibrationWindow: View {
 
         var title: String {
             switch self {
-            case .before: return "空灯前"
+            case .before: return "无片基（首测）"
             case .film: return "有片基"
-            case .after: return "空灯后"
+            case .after: return "无片基（复测）"
             }
         }
     }

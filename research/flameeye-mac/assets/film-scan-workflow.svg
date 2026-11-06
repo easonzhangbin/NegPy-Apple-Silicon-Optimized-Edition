@@ -1,20 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="792" viewBox="0 0 1240 792" role="img" aria-labelledby="diagram-title diagram-desc">
-  <title id="diagram-title">Film-base exposure balance and measured light reference / 片基配平与实测光谱参考</title>
-  <desc id="diagram-desc">Use the same clear film-base region in three single-lamp exposures. The optional NegPy report brings the camera P50 readings into Flameeye. Adjust the lamps using camera EV differences, then reshoot and verify that the maximum P50 difference is at most 0.20 EV. Save the measured P32 spectrum for reproducing the setup later. 用三张单色实拍的同一块透明片基配平。可从 NegPy 导入相机 P50 报告。按相机档差调灯并复拍，验收阈值为三路 P50 最大差不超过 0.20 EV。保存实测 P32 光谱，供下次复现。</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="640" viewBox="0 0 1240 640" role="img" aria-labelledby="title desc">
+  <title id="title">P32 film-base measurements / P32 片基测量</title>
+  <desc id="desc">Three independent uses for the P32. Check each lamp at maximum without film if needed. Measure transmittance with no film, with film, and no film again at fixed settings. To reproduce working light, save measured P32 band shares and the total through film, then compare in another session. P32 有三个独立用途。需要时取出片基，逐路检查灯的最大输出。测透过率时保持灯档、曝光和摆位，按无片、有片、无片采集。用实际工作灯档保存透片实测份额和总量，供下次复现。</desc>
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#102531"/>
-      <stop offset="0.53" stop-color="#101925"/>
+      <stop offset=".53" stop-color="#101925"/>
       <stop offset="1" stop-color="#171b2d"/>
     </linearGradient>
-    <linearGradient id="flameeye" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+    <linearGradient id="working" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#163444"/>
       <stop offset="1" stop-color="#1a273d"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+    <linearGradient id="accent">
       <stop stop-color="#77e1c9"/>
-      <stop offset="0.56" stop-color="#7abde9"/>
+      <stop offset=".56" stop-color="#7abde9"/>
       <stop offset="1" stop-color="#baa5ff"/>
     </linearGradient>
     <style>
@@ -26,96 +25,63 @@
       .zh-heading { fill: #bed4e7; font-size: 16px; font-weight: 600; }
       .body { fill: #dbe8f3; font-size: 15px; }
       .zh-body { fill: #b9cddd; font-size: 14px; }
-      .path-label { fill: #b9d1e3; font-size: 13px; font-weight: 600; }
-      .panel { fill: #182736; stroke: #3c5368; stroke-width: 1; }
+      .panel { fill: #182736; stroke: #3c5368; }
       .line { fill: none; stroke: #9cb8cc; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
-      .step-no { fill: #89e1d2; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
     </style>
   </defs>
 
-  <rect x="1" y="1" width="1238" height="790" rx="24" fill="url(#background)" stroke="#394d61" stroke-width="2"/>
+  <rect x="1" y="1" width="1238" height="638" rx="24" fill="url(#background)" stroke="#394d61" stroke-width="2"/>
   <rect x="54" y="40" width="44" height="4" rx="2" fill="url(#accent)"/>
-  <text class="eyebrow" x="54" y="70">FLAMEEYE × NEGPY 0.67</text>
-  <text class="hero" x="54" y="119">Film-base exposure balance</text>
-  <text class="subhead" x="54" y="153" lang="zh-CN">按相机实拍配平，保存实测光谱供复现</text>
+  <text class="eyebrow" x="54" y="70">FLAMEEYE MACOS / P32 USB</text>
+  <text class="hero" x="54" y="119">Film-base measurements with P32</text>
+  <text class="subhead" x="54" y="153" lang="zh-CN">用 P32 测透过率，记录和复现工作灯光</text>
 
   <g>
-    <rect class="panel" x="54" y="183" width="544" height="133" rx="15"/>
-    <rect x="73" y="203" width="39" height="39" rx="9" fill="#302b50" stroke="#7266a9"/>
-    <rect x="83" y="213" width="12" height="15" rx="2" fill="none" stroke="#eea3ab" stroke-width="1.3"/>
-    <rect x="87" y="216" width="12" height="15" rx="2" fill="#302b50" stroke="#a5e8be" stroke-width="1.3"/>
-    <rect x="91" y="219" width="12" height="15" rx="2" fill="#302b50" stroke="#a7bbff" stroke-width="1.3"/>
-    <text class="heading" x="127" y="221">NegPy 0.67 trichrome session</text>
-    <text class="zh-heading" x="127" y="244" lang="zh-CN">NegPy 0.67 三色分拍会话</text>
-    <text class="body" x="74" y="276">Meter the same clear patch in three single-lamp exposures.</text>
-    <text class="zh-body" x="74" y="299" lang="zh-CN">红、绿、蓝分别拍摄，测量同一块透明片基。</text>
+    <rect class="panel" x="54" y="183" width="544" height="151" rx="15"/>
+    <text class="eyebrow" x="74" y="209">OPTIONAL / 可选</text>
+    <text class="heading" x="74" y="242">Check lamp output without film</text>
+    <text class="zh-heading" x="74" y="267" lang="zh-CN">空载检查各路最大输出</text>
+    <text class="body" x="74" y="295">Remove the film. Run one RGB lamp at maximum at a time.</text>
+    <text class="zh-body" x="74" y="318" lang="zh-CN">取出片基，红、绿、蓝每次只开一路到最大档。</text>
   </g>
 
   <g>
-    <rect class="panel" x="642" y="183" width="544" height="133" rx="15"/>
-    <rect x="661" y="203" width="39" height="39" rx="9" fill="#21433f" stroke="#4b8c83"/>
-    <path d="M671 225h5l3-8 4 12 4-8h4" fill="none" stroke="#91edda" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <text class="heading" x="715" y="221">P32 USB spectrometer</text>
-    <text class="zh-heading" x="715" y="244" lang="zh-CN">P32 USB 光谱仪</text>
-    <text class="body" x="662" y="276">Measure the mixed light through the film base.</text>
-    <text class="zh-body" x="662" y="299" lang="zh-CN">经片基采集混光光谱，记录波段份额和积分总量。</text>
+    <rect class="panel" x="642" y="183" width="544" height="151" rx="15"/>
+    <text class="eyebrow" x="662" y="209">SEPARATE TEST / 独立测量</text>
+    <text class="heading" x="662" y="242">Measure transmittance for each lamp</text>
+    <text class="zh-heading" x="662" y="267" lang="zh-CN">片基透过率</text>
+    <text class="body" x="662" y="295">No film → film → no film. Keep lamp level and exposure fixed.</text>
+    <text class="zh-body" x="662" y="318" lang="zh-CN">保持灯亮和曝光，依次测无片基、有片基、无片基。</text>
   </g>
-
-  <path class="line" d="M324 317V382m-5-7 5 7 5-7"/>
-  <text class="path-label" x="339" y="349">Optional NegPy JSON report</text>
-  <text class="path-label" x="339" y="368" lang="zh-CN">可选 NegPy JSON 测光报告</text>
-  <path class="line" d="M914 317V382m-5-7 5 7 5-7"/>
-  <text class="path-label" x="931" y="355">USB link / USB 连接</text>
 
   <g>
-    <rect x="54" y="385" width="1132" height="141" rx="16" fill="url(#flameeye)" stroke="#5b839c" stroke-width="1.2"/>
-    <rect x="76" y="406" width="4" height="98" rx="2" fill="url(#accent)"/>
-    <text class="path-label" x="100" y="414">FLAMEEYE MACOS / 火眼</text>
-    <text class="heading" x="100" y="443">Check camera exposure balance</text>
-    <text class="zh-heading" x="100" y="468" lang="zh-CN">片基配平</text>
-    <text class="body" x="100" y="495">Compare the three linear P50 readings in EV.</text>
-    <path d="M620 411v89" stroke="#4c6479" stroke-width="1"/>
-    <text class="path-label" x="662" y="414">FLAMEEYE MACOS / 火眼</text>
-    <text class="heading" x="662" y="443">Record the measured spectrum</text>
-    <text class="zh-heading" x="662" y="468" lang="zh-CN">光谱复现</text>
-    <text class="body" x="662" y="495">Keep P32 band shares and total for reuse.</text>
+    <rect x="54" y="361" width="1132" height="238" rx="16" fill="url(#working)" stroke="#5b839c" stroke-width="1.2"/>
+    <rect x="73" y="382" width="4" height="54" rx="2" fill="url(#accent)"/>
+    <text class="heading" x="92" y="407">Save the working light and compare it next time</text>
+    <text class="zh-heading" x="92" y="433" lang="zh-CN">片基配平 · 保存和复现实际工作灯光</text>
+
+    <g>
+      <rect class="panel" x="73" y="457" width="346" height="119" rx="12"/>
+      <text class="heading" x="90" y="489">01  Measure through film</text>
+      <text class="zh-heading" x="90" y="515" lang="zh-CN">按实际工作灯档测量透片光</text>
+      <text class="body" x="90" y="545">Cover the probe opening with film base.</text>
+      <text class="zh-body" x="90" y="565" lang="zh-CN">让片基盖住整个探头入光口。</text>
+    </g>
+    <path class="line" d="M421 516h24m-6-4 6 4-6 4"/>
+    <g>
+      <rect class="panel" x="447" y="457" width="346" height="119" rx="12"/>
+      <text class="heading" x="464" y="489">02  Save a reference</text>
+      <text class="zh-heading" x="464" y="515" lang="zh-CN">保存片基光谱参考</text>
+      <text class="body" x="464" y="545">Save the measured shares and total.</text>
+      <text class="zh-body" x="464" y="565" lang="zh-CN">保存实测波段份额和积分合计。</text>
+    </g>
+    <path class="line" d="M795 516h24m-6-4 6 4-6 4"/>
+    <g>
+      <rect class="panel" x="821" y="457" width="346" height="119" rx="12"/>
+      <text class="heading" x="838" y="489">03  Compare live readings</text>
+      <text class="zh-heading" x="838" y="515" lang="zh-CN">已保存参考 → 光谱复现</text>
+      <text class="body" x="838" y="545">Use the same film base and placement.</text>
+      <text class="zh-body" x="838" y="565" lang="zh-CN">用同一片基和摆位对照参考。</text>
+    </g>
   </g>
-
-  <path class="line" d="M233 527V568m-5-7 5 7 5-7"/>
-  <path class="line" d="M1007 527V568m-5-7 5 7 5-7"/>
-
-  <g>
-    <rect class="panel" x="54" y="571" width="358" height="142" rx="15"/>
-    <text class="step-no" x="73" y="597">01</text>
-    <text class="heading" x="73" y="626">Adjust the RGB lamps</text>
-    <text class="zh-heading" x="73" y="649" lang="zh-CN">调节红、绿、蓝灯</text>
-    <text class="body" x="73" y="678">Use the camera EV differences.</text>
-    <text class="zh-body" x="73" y="699" lang="zh-CN">按相机实拍档差调灯。</text>
-  </g>
-
-  <path class="line" d="M415 641H438m-6-4 6 4-6 4"/>
-
-  <g>
-    <rect class="panel" x="441" y="571" width="358" height="142" rx="15"/>
-    <text class="step-no" x="460" y="597">02</text>
-    <text class="heading" x="460" y="626">Reshoot and verify</text>
-    <text class="zh-heading" x="460" y="649" lang="zh-CN">重拍三张并验证</text>
-    <text class="body" x="460" y="678">Same patch. Maximum P50 gap ≤ 0.20 EV.</text>
-    <text class="zh-body" x="460" y="699" lang="zh-CN">同一块片基，P50 最大档差 ≤ 0.20 EV。</text>
-  </g>
-
-  <path class="line" d="M802 641H825m-6-4 6 4-6 4"/>
-
-  <g>
-    <rect class="panel" x="828" y="571" width="358" height="142" rx="15"/>
-    <text class="step-no" x="847" y="597">03</text>
-    <text class="heading" x="847" y="626">Save the P32 reference</text>
-    <text class="zh-heading" x="847" y="649" lang="zh-CN">保存实测 P32 参考</text>
-    <text class="body" x="847" y="678">Compare with live P32 readings next time.</text>
-    <text class="zh-body" x="847" y="699" lang="zh-CN">下次测量时对照已保存的光谱。</text>
-  </g>
-
-  <path class="line" d="M619 714v27H232v-25" stroke-dasharray="4 4"/>
-  <path class="line" d="M228 722l4-6 4 6"/>
-  <text class="path-label" x="425" y="762" text-anchor="middle">Adjust again if needed / 需要时继续调灯复拍</text>
 </svg>

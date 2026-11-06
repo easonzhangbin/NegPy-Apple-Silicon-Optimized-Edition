@@ -9,15 +9,11 @@ struct LiveFilmBalanceView: View {
     @AppStorage("filmBase.liveRGB.tolerancePercent") private var tolerancePercent = 5
     @AppStorage("filmBase.liveRGB.savedBalances") private var savedBalancesData = Data()
     @State private var history = ReadingHistory()
-    @State private var report: FilmBaseNegPyVerification?
-    @State private var isReadingReport = false
-    @State private var sameSetup = false
     @State private var pendingSave: PendingBalance?
     @State private var balanceExportIssue: String?
 
     private let quickCount = 3
     private let referenceCount = 5
-    private let cameraToleranceEV = 0.2
 
     private var reference: FilmBaseLiveReference? {
         guard let saved = try? JSONDecoder().decode(FilmBaseLiveReference.self, from: referenceData),
@@ -44,9 +40,6 @@ struct LiveFilmBalanceView: View {
             if let device = measurement?.device, candidate.deviceID != device.id { return nil }
             return candidate
         }
-        let reportIssue = report?.meteringIssue
-        let spread = report?.medianSpreadEV
-        let passes = reportIssue == nil && spread.map { $0 <= cameraToleranceEV } == true
 
         VStack(alignment: .leading, spacing: 11) {
             heading(current: current, frameCount: frames.count, isSmoothed: quick != nil)
@@ -64,17 +57,10 @@ struct LiveFilmBalanceView: View {
                 notice("当前设备与光谱参考不同。请接回原 P32，或选择当前设备的记录。", systemImage: "exclamationmark.circle")
             }
 
-            cameraControls(qualityIssue: reportIssue, spread: spread, passes: passes)
-            savedBalanceControls(reading: stable, passes: passes)
+            savedBalanceControls(reading: stable)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { history = observed }
-        .onChange(of: report?.readAt) { _ in sameSetup = false }
-        .onChange(of: isReadingReport) { reading in
-            if reading { sameSetup = false }
-        }
-        .onChange(of: measurement?.device.id) { _ in sameSetup = false }
-        .onChange(of: startedAt) { _ in sameSetup = false }
         .onChange(of: UpdateKey(startedAt: startedAt, frame: measurement.map(FrameStamp.init))) { _ in
             history = observed
         }
@@ -107,7 +93,7 @@ struct LiveFilmBalanceView: View {
                         .foregroundStyle(InstrumentColor.secondary)
                 }
             }
-            Text("P32 实时显示各波段的光谱份额和总量，用于复现已保存的灯光。相机片基配平以 NegPy 的实拍测光为准。")
+            Text("让灯光透过片基。P32 实时显示三波段份额和总量。保持片基和摆位一致，对照已保存的光谱参考复现灯光。")
                 .foregroundStyle(InstrumentColor.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let current {
@@ -161,10 +147,11 @@ struct LiveFilmBalanceView: View {
                 }
             }
             if let saved {
-                Text("P32 参考  \(saved.deviceID)  ·  \(saved.capturedAt.formatted(date: .abbreviated, time: .standard))")
+                let exposure = saved.exposureUS.map { "  ·  \($0) µs" } ?? ""
+                Text("P32 参考  \(saved.deviceID)  ·  \(saved.capturedAt.formatted(date: .abbreviated, time: .standard))\(exposure)")
                     .textSelection(.enabled)
             } else {
-                Text("从「已保存配平」选择一项，与当时的波段份额和总量对照。")
+                Text("从「已保存参考」选择一项，与当时的波段份额和总量对照。")
             }
         }
         .font(InstrumentFont.style(.caption, light: true))
@@ -173,84 +160,18 @@ struct LiveFilmBalanceView: View {
         .instrumentPanel(cornerRadius: 13)
     }
 
-    private func cameraControls(qualityIssue: String?, spread: Double?, passes: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("相机片基验收", systemImage: "camera.aperture")
-                .font(InstrumentFont.style(.headline))
-                .foregroundStyle(InstrumentColor.teal)
-            NegPyBalanceAttachmentView(verification: $report, isReading: $isReadingReport)
-            Text("验收比较三张单色实拍中同一块透明片基的 P50，并检查该区域的计量质量。最大曝光差须在 \(String(format: "%.2f", cameraToleranceEV)) EV 以内。")
-                .font(InstrumentFont.style(.caption, light: true))
-                .foregroundStyle(InstrumentColor.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if isReadingReport {
-                EmptyView()
-            } else if let qualityIssue {
-                notice(qualityIssue, systemImage: "exclamationmark.circle")
-            } else if let report, let spread {
-                cameraResiduals(report)
-                Label(String(format: "片基 P50 最大差 %.3f EV · %@", spread, passes ? "曝光差达标" : "曝光差超出容差"),
-                      systemImage: passes ? "checkmark.circle" : "exclamationmark.circle")
-                    .font(InstrumentFont.style(.callout))
-                    .foregroundStyle(passes ? InstrumentColor.teal : InstrumentColor.amber)
-                if passes {
-                    Toggle("确认三色实拍与当前 P32 使用同一片基、同一摆位和对应灯档", isOn: $sameSetup)
-                        .toggleStyle(.checkbox)
-                        .font(InstrumentFont.style(.callout))
-                        .disabled(isReadingReport)
-                }
-            } else if report != nil {
-                notice("报告缺少有效的片基 P50 曝光差。", systemImage: "exclamationmark.circle")
-            }
-        }
-        .padding(11)
-        .instrumentPanel(cornerRadius: 13)
-    }
-
-    @ViewBuilder
-    private func cameraResiduals(_ report: FilmBaseNegPyVerification) -> some View {
-        if let levels = report.medianPercent, let red = levels.first, red > 0 {
-            HStack(spacing: 12) {
-                ForEach(RGBLightChannel.allCases) { channel in
-                    let value = levels[channel.index]
-                    if value > 0 {
-                        Text(String(format: "%@ %+.2f EV", channel.title, log2(red / value)))
-                            .foregroundStyle(channelColor(channel))
-                    }
-                }
-            }
-            .font(InstrumentFont.style(.caption))
-            Text("按本次片基 P50 与红路比较。正值表示需增加对应灯光量，负值表示需减少。调灯后重拍三张再检查。")
-                .font(InstrumentFont.style(.caption, light: true))
-                .foregroundStyle(InstrumentColor.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func savedBalanceControls(reading: FilmBaseLiveReading?, passes: Bool) -> some View {
+    private func savedBalanceControls(reading: FilmBaseLiveReading?) -> some View {
         let captureIssue = opticalCaptureIssue(reading)
-        let canValidate = captureIssue == nil && passes && sameSetup && !isReadingReport
         let items = savedBalances
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                Button("保存已验收配平") {
-                    guard canValidate, let reading, let report else { return }
-                    pendingSave = PendingBalance(reference: FilmBaseLiveReference(reading: reading),
-                                                 tolerancePercent: tolerancePercent, verifiedReport: report,
-                                                 verificationToleranceEV: cameraToleranceEV)
-                    sameSetup = false
-                }
-                .instrumentButton(prominent: true)
-                .disabled(!canValidate)
-
-                Button("仅保存光谱参考") {
+                Button("保存片基光谱参考") {
                     guard captureIssue == nil, let reading else { return }
                     pendingSave = PendingBalance(reference: FilmBaseLiveReference(reading: reading),
-                                                 tolerancePercent: tolerancePercent, verifiedReport: nil,
-                                                 verificationToleranceEV: nil)
+                                                 tolerancePercent: tolerancePercent)
                 }
-                .instrumentButton()
+                .instrumentButton(prominent: true)
                 .disabled(captureIssue != nil)
 
                 Spacer(minLength: 5)
@@ -262,7 +183,7 @@ struct LiveFilmBalanceView: View {
                         Text("暂无保存记录")
                     } else {
                         Divider()
-                        Menu("导出所选配平…") {
+                        Menu("导出所选参考…") {
                             ForEach(items) { item in
                                 Button(savedBalanceTitle(item)) {
                                     balanceExportIssue = exportFilmBaseSavedBalance(item)
@@ -271,21 +192,15 @@ struct LiveFilmBalanceView: View {
                         }
                     }
                 } label: {
-                    Label("已保存配平", systemImage: "bookmark.square")
+                    Label("已保存参考", systemImage: "bookmark.square")
                 }
                 .fixedSize()
-                .help("选择要复现或导出的配平。")
+                .help("选择要用于复现或导出的光谱参考。")
             }
             if let captureIssue {
                 Text(captureIssue)
                     .font(InstrumentFont.style(.caption, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
-            } else if !canValidate {
-                Text(passes ? "确认实拍报告与当前 P32 的片基、摆位和灯档一致后，可保存验收记录。"
-                     : "光谱参考可用于复现灯光。通过相机片基验收后可保存验收记录。")
-                    .font(InstrumentFont.style(.caption, light: true))
-                    .foregroundStyle(InstrumentColor.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             if let balanceExportIssue {
                 notice(balanceExportIssue, systemImage: "exclamationmark.circle")
@@ -303,8 +218,7 @@ struct LiveFilmBalanceView: View {
     }
 
     private func savedBalanceTitle(_ item: FilmBaseSavedBalance) -> String {
-        let kind = item.verifiedByNegPy ? "片基验收" : "仅光谱"
-        return "\(item.name)  ·  \(kind)  ·  \(item.reference.capturedAt.formatted(date: .abbreviated, time: .standard))"
+        "\(item.name)  ·  \(item.reference.capturedAt.formatted(date: .abbreviated, time: .standard))"
     }
 
     private func applySavedBalance(_ item: FilmBaseSavedBalance) {
@@ -401,9 +315,15 @@ struct LiveFilmBalanceView: View {
             }
             Spacer()
             if let reading, let reference {
-                Text("参考总量的 \(percent(reading.total / reference.total))")
-                    .font(InstrumentFont.style(.callout))
-                    .foregroundStyle(InstrumentColor.teal)
+                if reading.exposureUS == reference.exposureUS {
+                    Text("参考总量的 \(percent(reading.total / reference.total))")
+                        .font(InstrumentFont.style(.callout))
+                        .foregroundStyle(InstrumentColor.teal)
+                } else {
+                    Text("总量对照需同曝光")
+                        .font(InstrumentFont.style(.caption))
+                        .foregroundStyle(InstrumentColor.secondary)
+                }
             } else {
                 Text("相对参考总量 —")
                     .font(InstrumentFont.style(.caption, light: true))
@@ -451,8 +371,6 @@ struct LiveFilmBalanceView: View {
         let id = UUID()
         let reference: FilmBaseLiveReference
         let tolerancePercent: Int
-        let verifiedReport: FilmBaseNegPyVerification?
-        let verificationToleranceEV: Double?
     }
 
     @MainActor
@@ -468,17 +386,16 @@ struct LiveFilmBalanceView: View {
             self.pending = pending
             self.onSave = onSave
             let date = pending.reference.capturedAt.formatted(date: .numeric, time: .standard)
-            _name = State(initialValue: "\(pending.verifiedReport == nil ? "光谱参考" : "配平") \(date)")
+            _name = State(initialValue: "片基参考 \(date)")
         }
 
         var body: some View {
             let item = FilmBaseSavedBalance(name: name, reference: pending.reference,
-                                            tolerancePercent: pending.tolerancePercent, negPy: pending.verifiedReport,
-                                            verificationToleranceEV: pending.verificationToleranceEV)
+                                            tolerancePercent: pending.tolerancePercent)
             VStack(alignment: .leading, spacing: 12) {
-                Text(pending.verifiedReport == nil ? "仅保存光谱参考" : "保存已验收配平")
+                Text("保存片基光谱参考")
                     .font(InstrumentFont.style(.title3))
-                TextField("配平名称", text: $name)
+                TextField("参考名称", text: $name)
                     .font(InstrumentFont.style(.body))
                     .textFieldStyle(.roundedBorder)
                 Text("\(pending.reference.deviceID)  ·  \(pending.reference.capturedAt.formatted(date: .abbreviated, time: .standard))")
@@ -487,13 +404,8 @@ struct LiveFilmBalanceView: View {
                 Text("波段份额  \(sharesText)  ·  总量 \(String(format: "%.5g", pending.reference.total))  ·  容差 ±\(pending.tolerancePercent)%")
                     .font(InstrumentFont.style(.caption))
                     .foregroundStyle(InstrumentColor.secondary)
-                if let spread = pending.verifiedReport?.medianSpreadEV {
-                    Text(String(format: "NegPy 片基验收通过 · P50 差 %.3f EV", spread))
-                        .font(InstrumentFont.style(.caption))
-                        .foregroundStyle(InstrumentColor.teal)
-                }
                 if item == nil || saveFailed {
-                    Text(saveFailed ? "保存失败，请重试。" : "请输入有效的配平名称。")
+                    Text(saveFailed ? "保存失败，请重试。" : "请输入有效的参考名称。")
                         .font(InstrumentFont.style(.caption))
                         .foregroundStyle(InstrumentColor.amber)
                 }
