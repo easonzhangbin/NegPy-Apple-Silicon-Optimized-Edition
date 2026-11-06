@@ -12,22 +12,28 @@ struct P32MeasurementDetails: View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            Picker("显示内容", selection: $showsSamples) {
-                Text("设备参数").tag(false)
-                Text("波长采样（\(measurement.points.count)）").tag(true)
+            HStack(spacing: 10) {
+                Picker("显示内容", selection: $showsSamples) {
+                    Text("设备参数").tag(false)
+                    Text("波长采样").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text("\(measurement.points.count) 个采样点")
+                    .font(InstrumentFont.style(.caption, light: true))
+                    .foregroundStyle(InstrumentColor.secondary)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(5)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 8)
             .instrumentPanel(cornerRadius: 11)
 
             if showsSamples {
                 Table(measurement.points) {
-                    TableColumn("波长 (nm)") { point in
-                        Text(String(point.wavelength)).monospacedDigit()
+                    TableColumn("波长") { point in
+                        Text("\(point.wavelength) nm").font(InstrumentFont.style(.body))
                     }
                     TableColumn("光谱值") { point in
-                        Text(String(format: "%.9g", point.value)).monospacedDigit()
+                        Text(String(format: "%.9g", point.value)).font(InstrumentFont.style(.body))
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -59,9 +65,10 @@ struct P32MeasurementDetails: View {
                         onExport("field,label,value,unit\r\n" + rows.joined(separator: "\r\n") + "\r\n", "-p32-metrics")
                     }
                 } label: {
-                    Label(showsSamples ? "导出光谱 CSV…" : "导出参数 CSV…", systemImage: "square.and.arrow.down")
+                    InstrumentFont.controlLabel(showsSamples ? "导出光谱 CSV…" : "导出参数 CSV…",
+                                                systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.borderedProminent)
+                .instrumentButton(prominent: true)
             }
         }
         .padding(20)
@@ -79,20 +86,19 @@ struct P32MeasurementDetails: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("P32 测量详情")
-                    .font(.title2.weight(.semibold))
+                    .font(InstrumentFont.style(.title2))
                 Text(measurement.capturedAt.formatted(date: .abbreviated, time: .standard))
-                    .font(.system(.caption, design: .monospaced))
+                    .font(InstrumentFont.style(.caption, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
-                    .monospacedDigit()
             }
             Spacer()
             if isLive {
                 Label("连续测量中", systemImage: "dot.radiowaves.left.and.right")
-                    .font(.caption.weight(.medium))
+                    .font(InstrumentFont.style(.caption))
                     .foregroundStyle(InstrumentColor.teal)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 6)
-                    .background(InstrumentColor.teal.opacity(0.13), in: Capsule())
+                    .background(.thinMaterial, in: Capsule())
             }
         }
     }
@@ -100,7 +106,7 @@ struct P32MeasurementDetails: View {
     private func detailCard(_ section: DetailSection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(section.title, systemImage: section.symbol)
-                .font(.headline)
+                .font(InstrumentFont.style(.headline))
                 .foregroundStyle(InstrumentColor.teal)
                 .accessibilityAddTraits(.isHeader)
             Divider()
@@ -108,12 +114,12 @@ struct P32MeasurementDetails: View {
                 ForEach(section.rows) { row in
                     LabeledContent {
                         Text(row.displayValue)
-                            .font(.system(.callout, design: .monospaced))
+                            .font(InstrumentFont.style(.callout))
                             .foregroundStyle(InstrumentColor.text)
                             .multilineTextAlignment(.trailing)
                     } label: {
                         Text(row.title)
-                            .font(.callout)
+                            .font(InstrumentFont.style(.callout, light: true))
                             .foregroundStyle(InstrumentColor.secondary)
                     }
                 }

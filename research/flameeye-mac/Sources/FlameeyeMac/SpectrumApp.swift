@@ -10,6 +10,7 @@ struct SpectrumApp: App {
     var body: some Scene {
         Window("火眼光谱", id: "spectrum") {
             SpectrumWorkspace(model: model)
+                .font(InstrumentFont.style(.body))
                 .preferredColorScheme(.dark)
                 .frame(minWidth: 830, minHeight: 640)
                 .background { InstrumentWindowBackdrop() }
@@ -28,6 +29,7 @@ struct SpectrumApp: App {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .font(InstrumentFont.style(.body))
             .preferredColorScheme(.dark)
             .tint(InstrumentColor.teal)
             .frame(minWidth: 600, minHeight: 460)
@@ -50,6 +52,7 @@ struct SpectrumApp: App {
                                      }
                                  },
                                  capture: model.captureFilmBase)
+                .font(InstrumentFont.style(.body))
                 .preferredColorScheme(.dark)
                 .tint(InstrumentColor.teal)
                 .frame(minWidth: 720, minHeight: 510)
@@ -259,17 +262,8 @@ private struct InstrumentWindowBackdrop: View {
     var body: some View {
         ZStack {
             WindowVisualEffect()
-            InstrumentColor.background.opacity(reduceTransparency ? 1 : 0.40)
-            if !reduceTransparency {
-                RadialGradient(
-                    colors: [Color(red: 0.22, green: 0.48, blue: 0.52).opacity(0.24), .clear],
-                    center: .topLeading, startRadius: 10, endRadius: 520
-                )
-                RadialGradient(
-                    colors: [Color(red: 0.28, green: 0.29, blue: 0.56).opacity(0.18), .clear],
-                    center: .bottomTrailing, startRadius: 10, endRadius: 480
-                )
-            }
+                .opacity(reduceTransparency ? 0 : 1)
+            InstrumentColor.background.opacity(reduceTransparency ? 1 : 0.24)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -301,6 +295,9 @@ private struct WindowVisualEffect: NSViewRepresentable {
 
 @MainActor
 private struct SpectrumWorkspace: View {
+    private static let appIcon = Bundle.main.url(forResource: "Spectrum", withExtension: "icns")
+        .flatMap { NSImage(contentsOf: $0) }
+
     @ObservedObject var model: WorkspaceModel
     @Environment(\.openWindow) private var openWindow
     @State private var didRefresh = false
@@ -350,18 +347,25 @@ private struct SpectrumWorkspace: View {
 
     private var header: some View {
         HStack(spacing: 13) {
-            Image(systemName: "waveform")
-                .font(.system(size: 21, weight: .medium))
-                .foregroundStyle(InstrumentColor.teal)
-                .frame(width: 46, height: 46)
-                .instrumentPanel(cornerRadius: 14)
-                .accessibilityHidden(true)
+            Group {
+                if let icon = Self.appIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundStyle(InstrumentColor.teal)
+                }
+            }
+            .frame(width: 54, height: 54)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("火眼光谱")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(InstrumentFont.size(24))
                 Text("FLAMEEYE  /  USB SPECTROMETER")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(InstrumentFont.size(9))
                     .tracking(1.6)
                     .foregroundStyle(InstrumentColor.secondary)
             }
@@ -371,7 +375,7 @@ private struct SpectrumWorkspace: View {
             if let measurement = model.measurement {
                 let timestamp = measurement.capturedAt.formatted(date: .omitted, time: .standard)
                 Label(model.device == nil ? "上次测量 \(timestamp)" : timestamp, systemImage: "clock")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(InstrumentFont.size(12, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
                     .help("上次测量时间")
                     .accessibilityLabel("上次测量时间 \(timestamp)")
@@ -381,25 +385,25 @@ private struct SpectrumWorkspace: View {
                 Button {
                     openWindow(id: "p32-details")
                 } label: {
-                    Label("测量详情", systemImage: "list.bullet.rectangle")
+                    InstrumentFont.controlLabel("测量详情", systemImage: "list.bullet.rectangle")
                 }
-                .buttonStyle(.bordered)
+                .instrumentButton()
             }
 
             Button {
                 openWindow(id: "rgb-calibration")
             } label: {
-                Label("RGB 校准", systemImage: "slider.horizontal.3")
+                InstrumentFont.controlLabel("RGB 校准", systemImage: "slider.horizontal.3")
             }
-            .buttonStyle(.bordered)
+            .instrumentButton()
 
             Button {
                 model.exportCSV(correction: activeWavelengthCorrection)
             } label: {
-                Label(activeWavelengthCorrection == nil ? "导出 CSV" : "导出修正 CSV",
-                      systemImage: "square.and.arrow.down")
+                InstrumentFont.controlLabel(activeWavelengthCorrection == nil ? "导出 CSV" : "导出修正 CSV",
+                                            systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.bordered)
+            .instrumentButton()
             .help(activeWavelengthCorrection == nil
                   ? "导出原始波长和光谱值。"
                   : "导出全部原始波长和光谱值，并为修正范围内的采样点附上修正波长。")
@@ -422,71 +426,77 @@ private struct SpectrumWorkspace: View {
                 if let device = model.device {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(device.model)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(InstrumentFont.size(12))
                         Text("固件 \(device.firmware)  ·  序列号 \(device.serial)")
-                            .font(.system(size: 11))
+                            .font(InstrumentFont.size(11, light: true))
                             .foregroundStyle(InstrumentColor.secondary)
                     }
                     .accessibilityElement(children: .combine)
-                    Button("断开") { model.disconnect() }
+                    Button(action: model.disconnect) { InstrumentFont.controlText("断开") }
+                        .instrumentButton()
                         .disabled(model.activity != nil)
                     if device.supportsHardwareCalibration {
-                        Button("光谱校准…") { calibrationDevice = device }
+                        Button {
+                            calibrationDevice = device
+                        } label: {
+                            InstrumentFont.controlText("光谱校准…")
+                        }
+                            .instrumentButton()
                             .disabled(model.activity != nil)
                     }
                 } else {
-                    Picker("USB 串口", selection: $model.selectedPort) {
-                        if model.ports.isEmpty {
-                            Text("未发现 USB 串口").tag("")
-                        }
-                        ForEach(model.ports, id: \.self) { port in
-                            Text(URL(fileURLWithPath: port).lastPathComponent).tag(port)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(width: 225)
-                    .disabled(model.ports.isEmpty || model.activity != nil)
+                    let ports = model.ports.map { (URL(fileURLWithPath: $0).lastPathComponent, $0) }
+                    InstrumentPopup(label: "USB 串口", options: ports.isEmpty ? [("未发现 USB 串口", "")] : ports,
+                                    selection: $model.selectedPort)
+                        .frame(width: 225, height: 24)
+                        .disabled(model.ports.isEmpty || model.activity != nil)
 
                     Button {
                         model.refreshPorts()
                     } label: {
-                        Label("刷新串口", systemImage: "arrow.clockwise")
+                        InstrumentFont.controlLabel("刷新串口", systemImage: "arrow.clockwise")
                             .labelStyle(.iconOnly)
                     }
+                    .instrumentButton()
                     .help("刷新串口")
                     .disabled(model.activity != nil)
 
-                    Button(model.activity == .connecting ? "连接中…" : "连接") { model.connect() }
+                    Button(action: model.connect) {
+                        InstrumentFont.controlText(model.activity == .connecting ? "连接中…" : "连接")
+                    }
+                        .instrumentButton()
                         .disabled(model.selectedPort.isEmpty || model.activity != nil)
                 }
 
                 Spacer(minLength: 12)
 
                 if model.activity == .repeating || model.activity == .stopping {
-                    Button(model.activity == .stopping ? "停止中…" : "停止连续测量") {
-                        model.stop()
+                    Button(action: model.stop) {
+                        InstrumentFont.controlText(model.activity == .stopping ? "停止中…" : "停止连续测量")
                     }
+                    .instrumentButton()
                     .keyboardShortcut(.escape, modifiers: [])
                     .disabled(model.activity == .stopping)
                 } else {
                     Button {
                         model.capture(repeatCapture: true)
                     } label: {
-                        Label("连续测量", systemImage: "repeat")
+                        InstrumentFont.controlLabel("连续测量", systemImage: "repeat")
                     }
+                    .instrumentButton()
                     .disabled(model.device == nil || model.activity != nil)
                 }
 
                 Button {
                     model.capture(repeatCapture: false)
                 } label: {
-                    Label(model.activity == .single ? "测量中…" : "单次测量", systemImage: "viewfinder")
+                    InstrumentFont.controlLabel(model.activity == .single ? "测量中…" : "单次测量",
+                                                systemImage: "viewfinder")
                 }
-                .buttonStyle(.borderedProminent)
+                .instrumentButton(prominent: true)
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(model.device == nil || model.activity != nil)
             }
-            .buttonStyle(.bordered)
             .controlSize(.regular)
 
             if availableWavelengthCorrection != nil {
@@ -499,12 +509,12 @@ private struct SpectrumWorkspace: View {
                             .foregroundStyle(InstrumentColor.secondary)
                     }
                 }
-                .font(.system(size: 12))
+                .font(InstrumentFont.size(12))
             }
 
             if let issue = model.issue {
                 Label(issue, systemImage: "exclamationmark.circle")
-                    .font(.system(size: 12))
+                    .font(InstrumentFont.size(12))
                     .foregroundStyle(InstrumentColor.amber)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.updatesFrequently)
@@ -542,7 +552,7 @@ private struct SpectrumWorkspace: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(InstrumentFont.size(12))
                     .foregroundStyle(InstrumentColor.secondary)
                 Spacer()
                 Image(systemName: symbol)
@@ -552,12 +562,12 @@ private struct SpectrumWorkspace: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(display ?? "—")
-                    .font(.system(size: 30, weight: .medium, design: .monospaced))
+                    .font(InstrumentFont.size(30))
                     .foregroundStyle(display == nil ? InstrumentColor.secondary : InstrumentColor.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
                 Text(unit)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(InstrumentFont.size(11, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
             }
         }
@@ -594,9 +604,8 @@ private struct SpectrumWorkspace: View {
                 }
             }
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(InstrumentFont.size(11))
         .foregroundStyle(InstrumentColor.secondary)
-        .monospacedDigit()
         .lineLimit(1)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -643,18 +652,18 @@ private struct SpectrumPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("光谱分布")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(InstrumentFont.size(16))
                 Text(correction == nil ? "相对强度 (%)" : "相对强度（全谱峰值 = 100%）")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(InstrumentFont.size(11, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
                 Spacer()
                 if correction != nil {
                     Text("临时修正  \(rangeText)")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(InstrumentFont.size(11))
                         .foregroundStyle(InstrumentColor.amber)
                 } else if measurement != nil || device != nil {
                     Text(rangeText)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(InstrumentFont.size(11, light: true))
                         .foregroundStyle(InstrumentColor.secondary)
                 }
             }
@@ -676,7 +685,7 @@ private struct SpectrumPanel: View {
                 .overlay(alignment: .topTrailing) {
                     if let hovered {
                         Text(hoverLabel(hovered, peak: peak))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(InstrumentFont.size(11))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .instrumentPanel(cornerRadius: 7)
@@ -723,7 +732,7 @@ private struct SpectrumPanel: View {
                 .foregroundStyle(InstrumentColor.teal.opacity(0.7))
                 .accessibilityHidden(true)
             Text(emptyMessage)
-                .font(.system(size: 13, weight: .medium))
+                .font(InstrumentFont.size(13))
                 .foregroundStyle(InstrumentColor.secondary)
         }
         .padding(13)
@@ -789,7 +798,7 @@ private struct SpectrumPanel: View {
 
     private func axisLabel(_ label: String) -> Text {
         Text(label)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(InstrumentFont.size(10))
             .foregroundColor(InstrumentColor.secondary)
     }
 
@@ -901,11 +910,15 @@ private extension Measurement {
 
 extension View {
     func instrumentPanel(cornerRadius: CGFloat = 16) -> some View {
-        modifier(InstrumentGlassPanel(cornerRadius: cornerRadius))
+        modifier(InstrumentPanelMaterial(cornerRadius: cornerRadius))
+    }
+
+    func instrumentButton(prominent: Bool = false) -> some View {
+        modifier(InstrumentButtonStyle(prominent: prominent))
     }
 }
 
-private struct InstrumentGlassPanel: ViewModifier {
+private struct InstrumentPanelMaterial: ViewModifier {
     let cornerRadius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -916,19 +929,38 @@ private struct InstrumentGlassPanel: ViewModifier {
                 if reduceTransparency {
                     shape.fill(InstrumentColor.surface)
                 } else {
-                    shape.fill(.thinMaterial)
-                    shape.fill(
-                        LinearGradient(colors: [.white.opacity(0.08), InstrumentColor.surface.opacity(0.20)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
+                    shape.fill(.regularMaterial)
                 }
             }
-            .overlay {
-                shape.strokeBorder(
-                    LinearGradient(colors: [.white.opacity(0.24), .white.opacity(0.07)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing)
-                )
-                .allowsHitTesting(false)
+    }
+}
+
+private struct InstrumentButtonStyle: ViewModifier {
+    let prominent: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *), !reduceTransparency {
+            if prominent {
+                content.buttonStyle(.glassProminent)
+            } else {
+                content.buttonStyle(.glass)
             }
+        } else {
+            bordered(content)
+        }
+        #else
+        bordered(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func bordered(_ content: Content) -> some View {
+        if prominent {
+            content.buttonStyle(.borderedProminent)
+        } else {
+            content.buttonStyle(.bordered)
+        }
     }
 }

@@ -39,4 +39,4 @@ QT_QPA_PLATFORM=offscreen uv run --locked pytest -q tests/test_apple_silicon.py 
 
 ## Flameeye research companion
 
-Use the [Flameeye P32 companion](research/flameeye-mac/README.md) to compare P32 spectra with NegPy trichrome exposures and archive balance measurements.
+Use the [Flameeye P32 companion](research/flameeye-mac/README.md) to check camera exposure on clear film base and save a measured lighting reference.

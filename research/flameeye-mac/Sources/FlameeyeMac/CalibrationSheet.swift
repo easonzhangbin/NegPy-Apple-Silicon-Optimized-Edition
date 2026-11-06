@@ -22,36 +22,48 @@ struct CalibrationSheet: View {
             heading
             inputs
             preview
-            Divider()
             factoryRestore
             footer
         }
+        .font(InstrumentFont.style(.body))
         .padding(24)
         .frame(width: 630)
+        .background(.regularMaterial)
         .interactiveDismissDisabled(operation != nil)
         .alert(item: $confirmation, content: confirmationAlert)
     }
 
     private var heading: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Label("光谱校准", systemImage: "slider.horizontal.3")
-                .font(.title2.weight(.semibold))
-            Text("\(device.model)  ·  序列号 \(device.serial)  ·  \(device.startNM)–\(device.endNM) nm")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+        HStack(spacing: 11) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(InstrumentColor.teal)
+                .frame(width: 40, height: 40)
+                .instrumentPanel(cornerRadius: 12)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("光谱校准")
+                    .font(InstrumentFont.style(.title2))
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(device.model)  ·  序列号 \(device.serial)  ·  \(device.startNM)–\(device.endNM) nm")
+                    .font(InstrumentFont.style(.caption, light: true))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
     private var inputs: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("在相同条件下测量同一稳定光源，实测与参考光谱使用相同单位。两份 UTF-8 CSV 均须包含波长和正的光谱值，覆盖 \(device.startNM)–\(device.endNM) nm，每 1 nm 一行。")
-                .font(.callout)
+                .font(InstrumentFont.style(.callout, light: true))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             fileRow("实测光谱", file: source) { chooseFile(.source) }
             fileRow("参考光谱", file: reference) { chooseFile(.reference) }
         }
+        .padding(13)
+        .instrumentPanel(cornerRadius: 14)
         .disabled(operation != nil)
     }
 
@@ -67,24 +79,25 @@ struct CalibrationSheet: View {
                 .help(file?.path ?? title)
             Spacer(minLength: 8)
             Button(file == nil ? "导入 CSV…" : "更换 CSV…", action: choose)
+                .instrumentButton()
                 .accessibilityLabel("导入\(title) CSV")
         }
-        .font(.callout)
+        .font(InstrumentFont.style(.callout))
     }
 
     private var preview: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .firstTextBaseline) {
-                Text("光谱效率修正系数").font(.headline)
+                Text("光谱效率修正系数").font(InstrumentFont.style(.headline))
                 Spacer()
                 Text("实测光谱 ÷ 参考光谱")
-                    .font(.caption)
+                    .font(InstrumentFont.style(.caption, light: true))
                     .foregroundStyle(.secondary)
             }
 
             if let inputIssue {
                 Label(inputIssue, systemImage: "exclamationmark.circle")
-                    .font(.callout)
+                    .font(InstrumentFont.style(.callout))
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(minHeight: 83, alignment: .topLeading)
@@ -92,7 +105,7 @@ struct CalibrationSheet: View {
                 CalibrationRatioPreview(points: calibration.points)
             } else {
                 Text("导入两份 CSV 后即可预览将写入设备的修正系数。")
-                    .font(.callout)
+                    .font(InstrumentFont.style(.callout, light: true))
                     .foregroundStyle(.secondary)
                     .frame(minHeight: 83, alignment: .topLeading)
             }
@@ -100,27 +113,30 @@ struct CalibrationSheet: View {
             HStack {
                 Spacer()
                 Button("写入校准曲线…") { confirmation = .write }
-                    .buttonStyle(.borderedProminent)
+                    .instrumentButton(prominent: true)
                     .disabled(calibration == nil || operation != nil)
             }
         }
         .padding(13)
-        .background(Color.secondary.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
+        .instrumentPanel(cornerRadius: 14)
     }
 
     private var factoryRestore: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("恢复出厂光谱曲线")
-                    .font(.headline)
+                    .font(InstrumentFont.style(.headline))
                 Text("出厂曲线会覆盖设备中现有的光谱修正。")
-                    .font(.callout)
+                    .font(InstrumentFont.style(.callout, light: true))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 12)
             Button("恢复出厂曲线…") { confirmation = .restore }
+                .instrumentButton()
                 .disabled(operation != nil)
         }
+        .padding(13)
+        .instrumentPanel(cornerRadius: 14)
     }
 
     private var footer: some View {
@@ -128,16 +144,17 @@ struct CalibrationSheet: View {
             if let operation {
                 ProgressView().controlSize(.small)
                 Text(operation == .write ? "正在写入校准曲线并检查连接…" : "正在恢复出厂曲线并检查连接…")
-                    .font(.callout)
+                    .font(InstrumentFont.style(.callout, light: true))
                     .foregroundStyle(.secondary)
             } else if let feedback {
                 Label(feedback.message, systemImage: feedback.isError ? "exclamationmark.circle" : "checkmark.circle")
-                    .font(.callout)
+                    .font(InstrumentFont.style(.callout))
                     .foregroundStyle(feedback.isError ? .orange : .green)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             Button("关闭") { dismiss() }
+                .instrumentButton()
                 .keyboardShortcut(.cancelAction)
                 .disabled(operation != nil)
         }
@@ -245,8 +262,7 @@ private struct CalibrationRatioPreview: View {
                 Text("最小 \(format(lowest))×")
                 Text("最大 \(format(highest))×")
             }
-            .font(.system(.caption, design: .monospaced))
-            .monospacedDigit()
+            .font(InstrumentFont.style(.caption))
 
             Canvas { context, size in
                 let low = min(1, lowest)
@@ -274,7 +290,7 @@ private struct CalibrationRatioPreview: View {
                                style: StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round))
             }
             .frame(height: 58)
-            .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 4))
+            .background(InstrumentColor.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 7))
             .accessibilityLabel("修正系数曲线")
 
             HStack {
@@ -284,7 +300,7 @@ private struct CalibrationRatioPreview: View {
                 Spacer()
                 Text("\(points.last?.wavelength ?? 0) nm")
             }
-            .font(.system(.caption2, design: .monospaced))
+            .font(InstrumentFont.style(.caption2))
             .foregroundStyle(.secondary)
         }
     }

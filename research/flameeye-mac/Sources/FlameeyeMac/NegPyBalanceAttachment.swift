@@ -1,5 +1,4 @@
 import AppKit
-import SQLite3
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -12,127 +11,205 @@ struct FilmBaseNegPyVerification: Codable, Sendable {
         let aperture: Double
         let shutterSeconds: Double
         let p999Fraction: Double
-        let clippedPixels: Int
+        let clippedPixels: Int?
+        let p50Fraction: Double?
+        let roiClippedPixels: Int?
+        let roiSampleCount: Int?
+        let roiLinearityFraction: Double?
+        let roiPlateauFraction: Double?
+        let capturedAt: Date?
     }
 
-    struct SampleRegion: Codable, Sendable {
-        // Normalized bounds in the unrotated sensor image.
+    struct SampleRegion: Codable, Equatable, Sendable {
+        // Top-left normalized bounds in the unrotated, visible sensor image.
         let x: Double
         let y: Double
         let width: Double
         let height: Double
+
+        fileprivate var isValid: Bool {
+            x.isFinite && y.isFinite && width.isFinite && height.isFinite &&
+                x >= 0 && y >= 0 && x < 1 && y < 1 && width > 0 && height > 0 &&
+                x + width <= 1.000000001 && y + height <= 1.000000001
+        }
     }
 
     let readAt: Date
     let sampleRegion: SampleRegion
     let frames: [Frame]
+    let tripletID: String?
+    let generatedAt: Date?
+    let producerVersion: String?
+    let meteringMethod: String?
 
-    static func readCurrentTriplet() async throws -> Self {
+    var medianPercent: [Double]? {
+        let values = frames.compactMap(\.p50Fraction)
+        guard values.count == RGBLightChannel.allCases.count else { return nil }
+        return values.map { $0 * 100 }
+    }
+
+    var medianSpreadEV: Double? { Self.spreadEV(frames.compactMap(\.p50Fraction)) }
+
+    var meteringIssue: String? {
+        let roi = sampleRegion
+        guard let id = tripletID, !id.isEmpty, let generatedAt,
+              generatedAt.timeIntervalSinceReferenceDate.isFinite,
+              meteringMethod == "negpy-sensor-linear-half-size-v1",
+              roi.x >= 0, roi.y >= 0, roi.width > 0, roi.height > 0,
+              roi.x + roi.width <= 1.000000001, roi.y + roi.height <= 1.000000001,
+              frames.map(\.channel) == RGBLightChannel.allCases,
+              let first = frames.first, !first.camera.isEmpty,
+              [first.iso, first.aperture, first.shutterSeconds].allSatisfy({ $0.isFinite && $0 > 0 }),
+              frames.allSatisfy({ $0.camera == first.camera && $0.iso == first.iso &&
+                  $0.aperture == first.aperture && $0.shutterSeconds == first.shutterSeconds }) else {
+            return "请导入 NegPy 新版三色测光报告，核对片基区域和相机设置。"
+        }
+
+        // NegPy's 16-bit signal floor and saturation threshold, expressed as fractions.
+        let minimumSignal = 10.0 / 65_535
+        let saturation = 65_403.0 / 65_535
+        for frame in frames {
+            let channel = frame.channel.title
+            guard let p50 = frame.p50Fraction, (0...1).contains(p50),
+                  (p50...1).contains(frame.p999Fraction),
+                  let linearity = frame.roiLinearityFraction, (0...1).contains(linearity),
+                  let plateau = frame.roiPlateauFraction, (0...1).contains(plateau) else {
+                return "\(channel)光缺少有效的片基曝光或裁切数据。"
+            }
+            guard p50 >= minimumSignal else { return "\(channel)光片基信号太低，请确认取样区域和灯档。" }
+            var demosaicedClipping = 0.0
+            if let clipped = frame.roiClippedPixels, let count = frame.roiSampleCount, count > 0,
+               (0...count).contains(clipped) {
+                demosaicedClipping = Double(clipped) / Double(count)
+            } else if frame.roiClippedPixels != nil || frame.roiSampleCount != nil {
+                return "\(channel)光片基像素计数无效。"
+            }
+            if frame.p999Fraction >= saturation || plateau > 0.002 || max(linearity, demosaicedClipping) > 0.02 {
+                return "\(channel)光片基接近饱和或超出裁切限值，请降低亮度或缩短快门后重拍。"
+            }
+        }
+        return nil
+    }
+
+    private static func spreadEV(_ responses: [Double]) -> Double? {
+        guard responses.count == RGBLightChannel.allCases.count,
+              responses.allSatisfy({ $0.isFinite && $0 > 0 }),
+              let low = responses.min(), let high = responses.max() else { return nil }
+        return log2(high) - log2(low)
+    }
+
+    private struct Report: Decodable {
+        let schemaVersion: Int
+        let producer: String
+        let producerVersion: String
+        let generatedAt: Date
+        let tripletId: String
+        let sampleRegion: SampleRegion
+        let meteringMethod: String
+        let frames: [Frame]
+    }
+
+    static var defaultReportURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("NegPy-AppleSilicon-067", isDirectory: true)
+            .appendingPathComponent("flameeye-trichrome-report.json")
+    }
+
+    static func readLatestReport() async throws -> Self {
+        let url = defaultReportURL
+        guard FileManager.default.isReadableFile(atPath: url.path) else {
+            throw FilmBaseError.message("还没有 NegPy 测光报告。请先在 NegPy 导出报告，或选择已有的 JSON 文件。")
+        }
+        return try await readReport(url)
+    }
+
+    static func readReport(_ url: URL) async throws -> Self {
         try await Task.detached(priority: .userInitiated) {
-            let paths = try currentTripletPaths()
-            guard let executable = Bundle.main.url(forAuxiliaryExecutable: "MeasureNegPyExposure") else {
-                throw FilmBaseError.message("找不到 NegPy 曝光读取组件。请打开完整的火眼 Mac 应用。")
+            guard url.isFileURL, url.pathExtension.lowercased() == "json" else {
+                throw FilmBaseError.message("请选择 NegPy 导出的 JSON 测光报告。")
             }
-            let frames = try zip(RGBLightChannel.allCases, paths).map { color, path in
-                try readFrame(path, color: color, executable: executable)
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
+            let limit = 128 * 1024
+            let attributes = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard attributes.isRegularFile == true, let size = attributes.fileSize, size > 0, size <= limit else {
+                throw FilmBaseError.message("NegPy 测光报告为空或文件大小无效。")
             }
-            return Self(readAt: Date(), sampleRegion: SampleRegion(x: 0.445, y: 0.007, width: 0.115, height: 0.018),
-                        frames: frames)
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            guard let data = try handle.read(upToCount: limit + 1), !data.isEmpty, data.count <= limit else {
+                throw FilmBaseError.message("NegPy 测光报告为空或文件大小无效。")
+            }
+            return try decodeReport(data)
         }.value
     }
 
-    private static func currentTripletPaths() throws -> [String] {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let options = ["NegPy-AppleSilicon-067", "NegPy"].map {
-            support.appendingPathComponent($0, isDirectory: true).appendingPathComponent("settings.db")
+    static func decodeReport(_ data: Data) throws -> Self {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let value = try decoder.singleValueContainer().decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: value) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: value) { return date }
+            throw FilmBaseError.message("NegPy 测光报告的时间格式无效。")
         }
-        guard let settings = options.first(where: { FileManager.default.isReadableFile(atPath: $0.path) }) else {
-            throw FilmBaseError.message("找不到 NegPy 的会话记录。请先在 NegPy 中打开一组三色合成。")
+        let report: Report
+        do {
+            report = try decoder.decode(Report.self, from: data)
+        } catch {
+            throw FilmBaseError.message("无法读取 NegPy 测光报告，请在 NegPy 中重新导出。")
         }
 
-        var db: OpaquePointer?
-        let status = sqlite3_open_v2(settings.path, &db, SQLITE_OPEN_READONLY, nil)
-        defer { sqlite3_close(db) }
-        guard status == SQLITE_OK, let db else {
-            throw FilmBaseError.message("无法打开 NegPy 会话记录。")
+        guard report.schemaVersion == 1, report.producer == "NegPy" else {
+            throw FilmBaseError.message("此文件不是火眼支持的 NegPy 测光报告。")
         }
-        sqlite3_busy_timeout(db, 600)
-        var statement: OpaquePointer?
-        let query = """
-            SELECT key, value_json FROM global_settings
-            WHERE key IN ('session_active_path', 'session_triplets')
-            """
-        let prepared = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-        defer { sqlite3_finalize(statement) }
-        guard prepared == SQLITE_OK, let statement else {
-            throw FilmBaseError.message("当前 NegPy 版本的会话格式无法读取。")
+        guard report.meteringMethod == "negpy-sensor-linear-half-size-v1" else {
+            throw FilmBaseError.message("此报告使用了火眼尚不支持的 NegPy 测光方法。")
         }
-        var entries = [String: Data]()
-        var step = sqlite3_step(statement)
-        while step == SQLITE_ROW {
-            if let key = sqlite3_column_text(statement, 0), let value = sqlite3_column_text(statement, 1) {
-                entries[String(cString: key)] = Data(String(cString: value).utf8)
+        guard validText(report.producerVersion, limit: 128), validText(report.tripletId, limit: 128),
+              report.generatedAt.timeIntervalSinceReferenceDate.isFinite, report.sampleRegion.isValid,
+              report.frames.map(\.channel) == RGBLightChannel.allCases,
+              Set(report.frames.map(\.fileName)).count == RGBLightChannel.allCases.count else {
+            throw FilmBaseError.message("NegPy 测光报告的三色组或片基区域无效。")
+        }
+
+        let first = report.frames[0]
+        for frame in report.frames {
+            guard validText(frame.fileName, limit: 255), !frame.fileName.contains("/"),
+                  !frame.fileName.contains("\\"), frame.fileName != ".", frame.fileName != "..",
+                  validText(frame.camera, limit: 128),
+                  [frame.iso, frame.aperture, frame.shutterSeconds].allSatisfy({ $0.isFinite && $0 > 0 }),
+                  (0...1).contains(frame.p999Fraction),
+                  let median = frame.p50Fraction, (0...frame.p999Fraction).contains(median),
+                  let linearity = frame.roiLinearityFraction, (0...1).contains(linearity),
+                  let plateau = frame.roiPlateauFraction, (0...1).contains(plateau),
+                  frame.clippedPixels.map({ $0 >= 0 }) != false else {
+                throw FilmBaseError.message("NegPy 测光报告含无效的曝光或裁切读数。")
             }
-            step = sqlite3_step(statement)
-        }
-        guard step == SQLITE_DONE else {
-            throw FilmBaseError.message("NegPy 会话记录暂时无法读取，请稍后重试。")
-        }
-        guard let activeData = entries["session_active_path"], let groupsData = entries["session_triplets"],
-              let red = try? JSONDecoder().decode(String.self, from: activeData),
-              let groups = try? JSONSerialization.jsonObject(with: groupsData) as? [String: [Any]],
-              let members = groups[red], members.count >= 2,
-              let green = members[0] as? String, let blue = members[1] as? String else {
-            throw FilmBaseError.message("请在 NegPy 中选中要附上的三色合成，再点读取。")
+            if let count = frame.roiSampleCount, let clipped = frame.roiClippedPixels {
+                guard count > 0, (0...count).contains(clipped) else {
+                    throw FilmBaseError.message("NegPy 测光报告的片基像素计数无效。")
+                }
+            } else if frame.roiSampleCount != nil || frame.roiClippedPixels != nil {
+                throw FilmBaseError.message("NegPy 测光报告的片基像素计数不完整。")
+            }
+            guard frame.camera == first.camera, frame.iso == first.iso,
+                  frame.aperture == first.aperture, frame.shutterSeconds == first.shutterSeconds else {
+                throw FilmBaseError.message("三张 NegPy 实拍须使用同一相机、ISO、光圈和快门。")
+            }
         }
 
-        let paths = [red, green, blue]
-        guard Set(paths).count == RGBLightChannel.allCases.count,
-              paths.allSatisfy({ $0.hasPrefix("/") }) else {
-            throw FilmBaseError.message("NegPy 会话中的三色原片路径无效。")
-        }
-        if let missing = paths.first(where: { !FileManager.default.isReadableFile(atPath: $0) }) {
-            throw FilmBaseError.message("找不到原片 \(URL(fileURLWithPath: missing).lastPathComponent)。请确认相机或存储卡已连接。")
-        }
-        return paths
+        return Self(readAt: Date(), sampleRegion: report.sampleRegion, frames: report.frames,
+                    tripletID: report.tripletId, generatedAt: report.generatedAt,
+                    producerVersion: report.producerVersion, meteringMethod: report.meteringMethod)
     }
 
-    private struct ExposureResult: Decodable {
-        let p999: Double
-        let clippedPixels: Int
-        let camera: String
-        let iso: Double
-        let aperture: Double
-        let shutter: Double
-        let dominant: String
-    }
-
-    private static func readFrame(_ path: String, color: RGBLightChannel, executable: URL) throws -> Frame {
-        let name = URL(fileURLWithPath: path).lastPathComponent
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = [path, color.rawValue.prefix(1).uppercased()]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let detail = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-            throw FilmBaseError.message("无法读取 \(name) · \(detail)")
-        }
-        guard let result = try? JSONDecoder().decode(ExposureResult.self, from: data),
-              !result.camera.isEmpty, result.iso > 0, result.aperture > 0, result.shutter > 0,
-              result.p999.isFinite, result.p999 >= 0, result.clippedPixels >= 0 else {
-            throw FilmBaseError.message("\(name) 的曝光读数不完整。")
-        }
-        guard result.dominant == color.rawValue.prefix(1).uppercased() else {
-            throw FilmBaseError.message("\(name) 的主通道与 NegPy 分配的\(color.title)光不符。请核对三色组。")
-        }
-        return Frame(channel: color, fileName: name, camera: result.camera, iso: result.iso,
-                     aperture: result.aperture, shutterSeconds: result.shutter, p999Fraction: result.p999,
-                     clippedPixels: result.clippedPixels)
+    private static func validText(_ text: String, limit: Int) -> Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= limit &&
+            text.rangeOfCharacter(from: .controlCharacters) == nil
     }
 }
 
@@ -141,46 +218,91 @@ struct NegPyBalanceAttachmentView: View {
     @Binding var verification: FilmBaseNegPyVerification?
     @Binding var isReading: Bool
     @State private var issue: String?
+    @State private var choosingReport = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("NegPy 实拍").font(.callout.weight(.medium))
+                Text("NegPy 测光报告").font(InstrumentFont.style(.callout))
                 Spacer()
                 if verification != nil {
                     Button("移除") { verification = nil }
+                        .instrumentButton()
                         .disabled(isReading)
                 }
-                Button(isReading ? "读取中…" : "读取 NegPy 当前三色组") { readTriplet() }
+                Button {
+                    choosingReport = true
+                } label: {
+                    InstrumentFont.controlText("选择 JSON…")
+                }
+                    .instrumentButton()
+                    .disabled(isReading)
+                Button(isReading ? "读取中…" : "读取最新报告") { readReport() }
+                    .instrumentButton()
                     .disabled(isReading)
             }
             if let verification {
+                if let date = verification.generatedAt {
+                    Text("NegPy 导出于 \(date.formatted(date: .abbreviated, time: .standard))")
+                        .font(InstrumentFont.style(.caption, light: true))
+                        .foregroundStyle(InstrumentColor.secondary)
+                }
+                if let first = verification.frames.first {
+                    let settings = String(format: "ISO %.0f · f/%.2g · %.4g s", first.iso, first.aperture, first.shutterSeconds)
+                    Text("\(first.camera) · \(settings)")
+                        .font(InstrumentFont.style(.caption, light: true))
+                        .foregroundStyle(InstrumentColor.secondary)
+                }
                 ForEach(verification.frames, id: \.channel) { frame in
-                    let percent = String(format: "%.1f%%", frame.p999Fraction * 100)
-                    Text("\(frame.channel.title)  \(frame.fileName)  ·  \(percent)  ·  削顶 \(frame.clippedPixels) 像素")
-                        .font(.system(.caption, design: .monospaced))
+                    let high = String(format: "%.2f%%", frame.p999Fraction * 100)
+                    let median = frame.p50Fraction.map { String(format: " · P50 %.2f%%", $0 * 100) } ?? ""
+                    Text("\(frame.channel.title)  \(frame.fileName)  ·  P99.9 \(high)\(median)")
+                        .font(InstrumentFont.style(.caption))
+                    if let clipped = frame.roiClippedPixels, let count = frame.roiSampleCount {
+                        Text("片基到达上限 \(clipped)/\(count)")
+                            .font(InstrumentFont.style(.caption))
+                            .foregroundStyle(InstrumentColor.secondary)
+                    }
+                    if let linearity = frame.roiLinearityFraction, let plateau = frame.roiPlateauFraction {
+                        Text(String(format: "片基超线性范围 %.3f%% · 饱和平台 %.3f%%", linearity * 100, plateau * 100))
+                            .font(InstrumentFont.style(.caption))
+                            .foregroundStyle(plateau > 0 ? InstrumentColor.amber : InstrumentColor.secondary)
+                    }
                 }
             } else {
-                Text("在 NegPy 选中要保存的三色合成，再读取并核对文件名。曝光沿用 S1H 原片的固定片边取样位置。")
-                    .font(.caption)
+                Text("在 NegPy 选中三色合成并框选透明片基，然后导出测光报告。在这里读取报告，核对文件名与测光结果。")
+                    .font(InstrumentFont.style(.caption, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let issue {
-                Text(issue).font(.caption).foregroundStyle(InstrumentColor.amber)
+                Text(issue).font(InstrumentFont.style(.caption)).foregroundStyle(InstrumentColor.amber)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .fileImporter(isPresented: $choosingReport, allowedContentTypes: [.json]) { result in
+            switch result {
+            case let .success(url): readReport(url)
+            case let .failure(error): issue = error.localizedDescription
             }
         }
     }
 
-    private func readTriplet() {
+    private func readReport(_ url: URL? = nil) {
         isReading = true
         issue = nil
         verification = nil
         Task {
             defer { isReading = false }
-            do { verification = try await FilmBaseNegPyVerification.readCurrentTriplet() }
-            catch { issue = error.localizedDescription }
+            do {
+                if let url {
+                    verification = try await FilmBaseNegPyVerification.readReport(url)
+                } else {
+                    verification = try await FilmBaseNegPyVerification.readLatestReport()
+                }
+            } catch {
+                issue = error.localizedDescription
+            }
         }
     }
 }

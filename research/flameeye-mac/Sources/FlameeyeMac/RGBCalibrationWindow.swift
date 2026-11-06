@@ -25,11 +25,11 @@ struct RGBCalibrationWindow: View {
                     .instrumentPanel(cornerRadius: 12)
                     .accessibilityHidden(true)
                 Text("RGB 校准")
-                    .font(.title2.weight(.semibold))
+                    .font(InstrumentFont.style(.title2))
                 Spacer()
                 Picker("工作区", selection: $tab) {
-                    Text("P32 实时配平").tag(Tab.live)
-                    Text("P32 片基透过率").tag(Tab.spectrum)
+                    Text("片基配平").tag(Tab.live)
+                    Text("片基透过率").tag(Tab.spectrum)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -42,9 +42,11 @@ struct RGBCalibrationWindow: View {
                     case .live:
                         HStack {
                             Spacer()
-                            Button(isLive ? "停止连续测量" : "开始连续测量", action: toggleLive)
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!isLive && (isBusy || device?.protocolProfile != .legacyP32))
+                            Button(action: toggleLive) {
+                                InstrumentFont.controlText(isLive ? "停止连续测量" : "开始连续测量")
+                            }
+                            .instrumentButton(prominent: true)
+                            .disabled(!isLive && (isBusy || device?.protocolProfile != .legacyP32))
                         }
                         if let liveIssue { issueLabel(liveIssue) }
                         LiveFilmBalanceView(measurement: measurement, startedAt: isLive ? captureStartedAt : nil)
@@ -66,13 +68,13 @@ struct RGBCalibrationWindow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let device, device.protocolProfile == .legacyP32 {
                     Text("P32  \(device.id)")
-                        .font(.system(.caption, design: .monospaced))
+                        .font(InstrumentFont.style(.caption, light: true))
                 } else {
                     Text("请在主窗口连接 P32。")
                         .foregroundStyle(InstrumentColor.amber)
                 }
             }
-            .font(.callout)
+            .font(InstrumentFont.style(.callout, light: true))
             .foregroundStyle(InstrumentColor.secondary)
 
             if let spectrumIssue { issueLabel(spectrumIssue) }
@@ -89,11 +91,11 @@ struct RGBCalibrationWindow: View {
             HStack {
                 Circle().fill(channelColor(channel)).frame(width: 7, height: 7).accessibilityHidden(true)
                 Text("\(channel.title) · \(channel.band.lowerBound)–\(channel.band.upperBound) nm")
-                    .font(.headline)
+                    .font(InstrumentFont.style(.headline))
                 Spacer()
                 if let before = series.before {
                     Text("\(before.deviceID)  ·  \(before.exposureUS) µs")
-                        .font(.system(.caption, design: .monospaced))
+                        .font(InstrumentFont.style(.caption, light: true))
                         .foregroundStyle(InstrumentColor.secondary)
                 }
             }
@@ -113,7 +115,7 @@ struct RGBCalibrationWindow: View {
                     Text("空灯变化 \(percent(result.drift, digits: 2))")
                         .foregroundStyle(InstrumentColor.secondary)
                 }
-                .font(.system(.callout, design: .monospaced).weight(.medium))
+                .font(InstrumentFont.style(.callout))
                 .accessibilityElement(children: .combine)
                 if abs(result.drift) > 0.05 {
                     issueLabel("前后空灯积分相差超过 5%，请检查灯光和探头位置后重采。")
@@ -131,23 +133,26 @@ struct RGBCalibrationWindow: View {
         let pending = pendingCapture == PendingCapture(channel: channel, phase: phase)
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                Text(phase.title).font(.callout.weight(.medium))
+                Text(phase.title).font(InstrumentFont.style(.callout))
                 if pending {
                     ProgressView().controlSize(.small)
                 }
             }
             Text(sample.map { String(format: "积分 %.6g", $0.area) } ?? "待采集")
-                .font(.system(.caption, design: .monospaced))
+                .font(InstrumentFont.style(.caption))
                 .foregroundStyle(InstrumentColor.secondary)
-            Button(sample == nil ? "采集" : "重采") {
+            Button {
                 captureSpectrum(channel, phase: phase)
+            } label: {
+                InstrumentFont.controlText(sample == nil ? "采集" : "重采")
             }
+            .instrumentButton()
             .disabled(!canCapture(phase, series: series))
             .accessibilityLabel("\(channel.title) \(phase.title) \(sample == nil ? "采集" : "重采")")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
-        .background(.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 6))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func canCapture(_ phase: CapturePhase, series: SpectrumSeries) -> Bool {
@@ -195,7 +200,7 @@ struct RGBCalibrationWindow: View {
 
     private func issueLabel(_ text: String) -> some View {
         Label(text, systemImage: "exclamationmark.circle")
-            .font(.callout)
+            .font(InstrumentFont.style(.callout))
             .foregroundStyle(InstrumentColor.amber)
             .fixedSize(horizontal: false, vertical: true)
     }

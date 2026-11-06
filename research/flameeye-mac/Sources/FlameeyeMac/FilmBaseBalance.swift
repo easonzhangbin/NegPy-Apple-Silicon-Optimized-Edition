@@ -132,13 +132,20 @@ struct FilmBaseLiveReference: Codable, Sendable {
     let total: Double
     let deviceID: String
     let capturedAt: Date
+    let exposureUS: UInt32?
 
     init(reading: FilmBaseLiveReading) {
         shares = reading.shares
         total = reading.total
         deviceID = reading.deviceID
         capturedAt = reading.capturedAt
+        exposureUS = reading.exposureUS
     }
+}
+
+private struct FilmBaseLegacyBaseline: Codable, Sendable {
+    let optical: FilmBaseLiveReference
+    let report: FilmBaseNegPyVerification
 }
 
 struct FilmBaseSavedBalance: Identifiable, Codable, Sendable {
@@ -147,15 +154,26 @@ struct FilmBaseSavedBalance: Identifiable, Codable, Sendable {
     let reference: FilmBaseLiveReference
     let tolerancePercent: Int
     let negPy: FilmBaseNegPyVerification?
+    private let baseline: FilmBaseLegacyBaseline?
+    let verificationToleranceEV: Double?
 
     init?(name: String, reference: FilmBaseLiveReference, tolerancePercent: Int,
-          negPy: FilmBaseNegPyVerification? = nil) {
+          negPy: FilmBaseNegPyVerification? = nil,
+          verificationToleranceEV: Double? = nil) {
         id = UUID()
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.reference = reference
         self.tolerancePercent = tolerancePercent
         self.negPy = negPy
-        guard isValid else { return nil }
+        baseline = nil
+        self.verificationToleranceEV = verificationToleranceEV
+        guard isValid, negPy == nil || verifiedByNegPy else { return nil }
+    }
+
+    var verifiedByNegPy: Bool {
+        guard let negPy, let tolerance = verificationToleranceEV,
+              negPy.meteringIssue == nil, let spread = negPy.medianSpreadEV else { return false }
+        return spread <= tolerance
     }
 
     var isValid: Bool {
@@ -166,39 +184,9 @@ struct FilmBaseSavedBalance: Identifiable, Codable, Sendable {
             reference.shares.allSatisfy { $0.isFinite && (0.001...1).contains($0) } &&
             abs(reference.shares.reduce(0, +) - 1) < 0.000001 &&
             reference.total.isFinite && reference.total > 0 &&
+            reference.exposureUS.map { $0 > 0 } != false &&
+            verificationToleranceEV.map { $0.isFinite && $0 > 0 } != false &&
             [2, 5, 10].contains(tolerancePercent)
-    }
-}
-
-struct FilmBaseLightTarget: Codable, Sendable {
-    private let baseShares: [Double]
-    let deviceID: String
-    let capturedAt: Date
-    let responsePercent: [Double]
-
-    init?(reading: FilmBaseLiveReading, responsePercent: [Double]) {
-        baseShares = reading.shares
-        deviceID = reading.deviceID
-        capturedAt = reading.capturedAt
-        self.responsePercent = responsePercent
-        guard shares != nil else { return nil }
-    }
-
-    var shares: [Double]? {
-        let count = RGBLightChannel.allCases.count
-        guard !deviceID.isEmpty, capturedAt.timeIntervalSinceReferenceDate.isFinite,
-              baseShares.count == count, responsePercent.count == count,
-              baseShares.allSatisfy({ $0.isFinite && $0 > 0 && $0 < 1 }),
-              abs(baseShares.reduce(0, +) - 1) < 0.000001,
-              responsePercent.allSatisfy({ $0.isFinite && $0 > 0 && $0 < 100 }) else { return nil }
-
-        // Inverse response estimates the relative light needed from the recorded baseline.
-        let corrected = zip(baseShares, responsePercent).map { $0 / $1 }
-        let total = corrected.reduce(0, +)
-        guard total.isFinite, total > 0 else { return nil }
-        let normalized = corrected.map { $0 / total }
-        guard normalized.allSatisfy({ $0.isFinite && $0 > 0 && $0 < 1 }) else { return nil }
-        return normalized
     }
 }
 
