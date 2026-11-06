@@ -48,9 +48,9 @@ enum InstrumentFont {
         regularName.flatMap { NSFont(name: $0, size: points) } ?? .systemFont(ofSize: points)
     }
 
-    static func popupTitle(_ title: String, font: NSFont) -> NSAttributedString {
+    static func popupTitle(_ title: String, font: NSFont, forClosedControl: Bool = false) -> NSAttributedString {
         var attributes: [NSAttributedString.Key: Any] = [.font: font]
-        if font.fontName == regularName {
+        if forClosedControl, font.fontName == regularName {
             // The native popup baseline sits too high for LG1055's glyphs.
             attributes[.baselineOffset] = -3.5
         }
@@ -76,6 +76,10 @@ struct InstrumentPopup<Value: Equatable>: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSPopUpButton {
         let control = NSPopUpButton(frame: .zero, pullsDown: false)
+        if let cell = control.cell as? NSPopUpButtonCell {
+            cell.usesItemFromMenu = false
+            cell.menuItem = NSMenuItem()
+        }
         control.font = InstrumentFont.native(NSFont.systemFontSize)
         control.target = context.coordinator
         control.action = #selector(Coordinator.selectValue(_:))
@@ -96,6 +100,7 @@ struct InstrumentPopup<Value: Equatable>: NSViewRepresentable {
             }
         }
         control.selectItem(at: context.coordinator.values.firstIndex(of: selection) ?? 0)
+        context.coordinator.updateClosedTitle(of: control)
         control.isEnabled = isEnabled
     }
 
@@ -112,7 +117,18 @@ struct InstrumentPopup<Value: Equatable>: NSViewRepresentable {
         @objc func selectValue(_ control: NSPopUpButton) {
             let index = control.indexOfSelectedItem
             guard values.indices.contains(index) else { return }
+            updateClosedTitle(of: control)
             selection.wrappedValue = values[index]
+        }
+
+        func updateClosedTitle(of control: NSPopUpButton) {
+            guard let item = (control.cell as? NSPopUpButtonCell)?.menuItem else { return }
+            let title = control.titleOfSelectedItem ?? ""
+            guard item.title != title else { return }
+            let font = control.font ?? InstrumentFont.native(NSFont.systemFontSize)
+            item.title = title
+            item.attributedTitle = InstrumentFont.popupTitle(title, font: font, forClosedControl: true)
+            control.needsDisplay = true
         }
     }
 }

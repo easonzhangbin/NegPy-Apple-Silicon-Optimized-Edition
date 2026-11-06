@@ -4,10 +4,12 @@ import SwiftUI
 struct LiveFilmBalanceView: View {
     let measurement: Measurement?
     let startedAt: Date?
+    let captureReference: FilmBaseLiveReference?
 
     @AppStorage("filmBase.liveRGB.reference") private var referenceData = Data()
     @AppStorage("filmBase.liveRGB.tolerancePercent") private var tolerancePercent = 5
     @AppStorage("filmBase.liveRGB.savedBalances") private var savedBalancesData = Data()
+    @AppStorage("filmBase.liveRGB.savedSelectionCaptureTime") private var savedSelectionCaptureTime: Double = 0
     @State private var history = ReadingHistory()
     @State private var pendingSave: PendingBalance?
     @State private var balanceExportIssue: String?
@@ -15,12 +17,19 @@ struct LiveFilmBalanceView: View {
     private let quickCount = 3
     private let referenceCount = 5
 
-    private var reference: FilmBaseLiveReference? {
+    private var savedReference: FilmBaseLiveReference? {
         guard let saved = try? JSONDecoder().decode(FilmBaseLiveReference.self, from: referenceData),
               saved.shares.count == RGBLightChannel.allCases.count,
               saved.shares.allSatisfy({ $0.isFinite && (0.001...1).contains($0) }),
               saved.total.isFinite, saved.total > 0 else { return nil }
         return saved
+    }
+
+    private var activeReference: FilmBaseLiveReference? {
+        if let captureReference, savedSelectionCaptureTime != captureReference.capturedAt.timeIntervalSinceReferenceDate {
+            return captureReference
+        }
+        return savedReference ?? captureReference
     }
 
     private var savedBalances: [FilmBaseSavedBalance] {
@@ -35,8 +44,8 @@ struct LiveFilmBalanceView: View {
             ? FilmBaseLiveReading(readings: Array(frames.suffix(quickCount))) : nil
         let stable = frames.count == referenceCount ? FilmBaseLiveReading(readings: frames) : nil
         let current = quick ?? frames.last
-        let saved = reference
-        let comparison = saved.flatMap { candidate -> FilmBaseLiveReference? in
+        let active = activeReference
+        let comparison = active.flatMap { candidate -> FilmBaseLiveReference? in
             if let device = measurement?.device, candidate.deviceID != device.id { return nil }
             return candidate
         }
@@ -51,10 +60,10 @@ struct LiveFilmBalanceView: View {
                 }
             }
             totalCard(reading: current, reference: comparison)
-            referenceControls(saved)
+            referenceControls(active)
 
-            if saved != nil, comparison == nil {
-                notice("当前设备与光谱参考不同。请接回原 P32，或选择当前设备的记录。", systemImage: "exclamationmark.circle")
+            if active != nil, comparison == nil {
+                notice("当前设备与光谱参考不同。请选择当前 P32 的参考或重新采集。", systemImage: "exclamationmark.circle")
             }
 
             savedBalanceControls(reading: stable)
@@ -66,7 +75,8 @@ struct LiveFilmBalanceView: View {
         }
         .sheet(item: $pendingSave) { pending in
             BalanceNameSheet(pending: pending) { item, shouldExport in
-                guard let encoded = try? JSONEncoder().encode([item] + savedBalances) else { return false }
+                guard let encoded = try? JSONEncoder().encode([item] + savedBalances),
+                      applySavedBalance(item) else { return false }
                 savedBalancesData = encoded
                 if shouldExport { balanceExportIssue = exportFilmBaseSavedBalance(item) }
                 return true
@@ -77,7 +87,7 @@ struct LiveFilmBalanceView: View {
     private func heading(current: FilmBaseLiveReading?, frameCount: Int, isSmoothed: Bool) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Label("片基配平", systemImage: "waveform.path")
+                Label("实时混光", systemImage: "waveform.path")
                     .font(InstrumentFont.style(.headline))
                     .foregroundStyle(InstrumentColor.teal)
                 Spacer()
@@ -93,7 +103,7 @@ struct LiveFilmBalanceView: View {
                         .foregroundStyle(InstrumentColor.secondary)
                 }
             }
-            Text("让灯光透过片基。P32 实时显示三波段份额和总量。保持片基和摆位一致，对照已保存的光谱参考复现灯光。")
+            Text("让混合灯光透过片基。P32 实时显示三波段份额和总量。保持片基和摆位一致，调灯时对照当前光谱参考。")
                 .foregroundStyle(InstrumentColor.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let current {
@@ -131,27 +141,38 @@ struct LiveFilmBalanceView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func referenceControls(_ saved: FilmBaseLiveReference?) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+    private func referenceControls(_ reference: FilmBaseLiveReference?) -> some View {
+        let isEstimated = reference?.isEstimated == true
+        return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                Label("光谱复现", systemImage: "waveform.path")
+                Label(reference == nil ? "光谱对照" : isEstimated ? "单色合成参考" : "已保存混光参考",
+                      systemImage: "waveform.path")
                     .font(InstrumentFont.style(.callout))
                 Spacer(minLength: 5)
                 Text("光谱相对容差")
                 InstrumentPopup(label: "光谱相对容差", options: [2, 5, 10].map { ("±\($0)%", $0) },
                                 selection: $tolerancePercent)
                     .frame(width: 73, height: 24)
-                if saved != nil {
-                    Button("清除对照") { referenceData = Data() }
-                        .instrumentButton()
+                if reference != nil, !isEstimated {
+                    Button {
+                        referenceData = Data()
+                        savedSelectionCaptureTime = 0
+                    } label: {
+                        InstrumentFont.controlText(captureReference == nil ? "清除对照" : "返回单色合成")
+                    }
+                    .instrumentButton()
                 }
             }
-            if let saved {
-                let exposure = saved.exposureUS.map { "  ·  \($0) µs" } ?? ""
-                Text("P32 参考  \(saved.deviceID)  ·  \(saved.capturedAt.formatted(date: .abbreviated, time: .standard))\(exposure)")
+            if let reference {
+                let exposure = reference.exposureUS.map { "  ·  \($0) µs" } ?? ""
+                Text("P32  \(reference.deviceID)  ·  \(reference.capturedAt.formatted(date: .abbreviated, time: .standard))\(exposure)")
                     .textSelection(.enabled)
+                if isEstimated {
+                    Text("由红、绿、蓝单色采集合成。请开启混光实测确认，再保存混光光谱。")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
-                Text("从「已保存参考」选择一项，与当时的波段份额和总量对照。")
+                Text("完成单色采集以生成参考，或从「已保存参考」选择混光记录。")
             }
         }
         .font(InstrumentFont.style(.caption, light: true))
@@ -177,7 +198,7 @@ struct LiveFilmBalanceView: View {
                 Spacer(minLength: 5)
                 Menu {
                     ForEach(items) { item in
-                        Button(savedBalanceTitle(item)) { applySavedBalance(item) }
+                        Button(savedBalanceTitle(item)) { _ = applySavedBalance(item) }
                     }
                     if items.isEmpty {
                         Text("暂无保存记录")
@@ -209,7 +230,7 @@ struct LiveFilmBalanceView: View {
     }
 
     private func opticalCaptureIssue(_ reading: FilmBaseLiveReading?) -> String? {
-        guard startedAt != nil else { return "开始连续测量后即可保存当前光谱。" }
+        guard startedAt != nil else { return "开启混光并开始连续测量后，即可保存实测光谱。" }
         guard let reading else { return "等待 \(referenceCount) 帧同曝光有效读数。" }
         guard reading.shares.allSatisfy({ $0 >= 0.001 }) else {
             return "保存时，每个波段的中位份额至少需占 0.1%。"
@@ -221,10 +242,12 @@ struct LiveFilmBalanceView: View {
         "\(item.name)  ·  \(item.reference.capturedAt.formatted(date: .abbreviated, time: .standard))"
     }
 
-    private func applySavedBalance(_ item: FilmBaseSavedBalance) {
-        guard item.isValid, let encoded = try? JSONEncoder().encode(item.reference) else { return }
+    private func applySavedBalance(_ item: FilmBaseSavedBalance) -> Bool {
+        guard item.isValid, let encoded = try? JSONEncoder().encode(item.reference) else { return false }
         referenceData = encoded
         tolerancePercent = item.tolerancePercent
+        savedSelectionCaptureTime = captureReference?.capturedAt.timeIntervalSinceReferenceDate ?? 0
+        return true
     }
 
     private func channelCard(
@@ -257,16 +280,18 @@ struct LiveFilmBalanceView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
 
-            shareBar(value: value, target: target, color: color)
+            shareBar(value: value, referenceShare: referenceShare, target: target, color: color)
                 .accessibilityHidden(true)
 
-            if let target {
+            if let referenceShare, let target {
+                Text("参考份额 \(percent(referenceShare))")
+                    .font(InstrumentFont.style(.caption))
                 Text("参考范围 \(percent(target.lowerBound))–\(percent(target.upperBound))")
                     .font(InstrumentFont.style(.caption))
                     .foregroundStyle(InstrumentColor.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("参考范围 —")
+                Text("参考份额 —")
                     .font(InstrumentFont.style(.caption, light: true))
                     .foregroundStyle(InstrumentColor.secondary)
             }
@@ -280,16 +305,16 @@ struct LiveFilmBalanceView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func shareBar(value: Double?, target: ClosedRange<Double>?, color: Color) -> some View {
+    private func shareBar(value: Double?, referenceShare: Double?, target: ClosedRange<Double>?, color: Color) -> some View {
         GeometryReader { geometry in
             let width = geometry.size.width
             let track = max(0, width - 7)
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.12))
+                Capsule().fill(.white.opacity(0.12)).frame(height: 7)
                 if let target {
                     Capsule()
                         .fill(color.opacity(0.40))
-                        .frame(width: track * CGFloat(target.upperBound - target.lowerBound))
+                        .frame(width: track * CGFloat(target.upperBound - target.lowerBound), height: 7)
                         .offset(x: 3.5 + track * CGFloat(target.lowerBound))
                 }
                 if let value {
@@ -299,9 +324,15 @@ struct LiveFilmBalanceView: View {
                         .frame(width: 7, height: 7)
                         .offset(x: offset)
                 }
+                if let referenceShare {
+                    Capsule()
+                        .fill(.white)
+                        .frame(width: 2, height: 11)
+                        .offset(x: 2.5 + track * CGFloat(referenceShare))
+                }
             }
         }
-        .frame(height: 7)
+        .frame(height: 11)
     }
 
     private func totalCard(reading: FilmBaseLiveReading?, reference: FilmBaseLiveReference?) -> some View {
@@ -316,7 +347,8 @@ struct LiveFilmBalanceView: View {
             Spacer()
             if let reading, let reference {
                 if reading.exposureUS == reference.exposureUS {
-                    Text("参考总量的 \(percent(reading.total / reference.total))")
+                    let source = reference.isEstimated == true ? "合成参考总量" : "参考总量"
+                    Text("\(source)的 \(percent(reading.total / reference.total))")
                         .font(InstrumentFont.style(.callout))
                         .foregroundStyle(InstrumentColor.teal)
                 } else {
@@ -395,6 +427,9 @@ struct LiveFilmBalanceView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("保存片基光谱参考")
                     .font(InstrumentFont.style(.title3))
+                Text("确认当前灯光为混光。保存的是本次五帧实测的光谱参考。")
+                    .font(InstrumentFont.style(.callout, light: true))
+                    .foregroundStyle(InstrumentColor.secondary)
                 TextField("参考名称", text: $name)
                     .font(InstrumentFont.style(.body))
                     .textFieldStyle(.roundedBorder)

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1240" height="640" viewBox="0 0 1240 640" role="img" aria-labelledby="title desc">
-  <title id="title">P32 film-base measurements / P32 片基测量</title>
-  <desc id="desc">Three independent uses for the P32. Check each lamp at maximum without film if needed. Measure transmittance with no film, with film, and no film again at fixed settings. To reproduce working light, save measured P32 band shares and the total through film, then compare in another session. P32 有三个独立用途。需要时取出片基，逐路检查灯的最大输出。测透过率时保持灯档、曝光和摆位，按无片、有片、无片采集。用实际工作灯档保存透片实测份额和总量，供下次复现。</desc>
+  <title id="title">P32 film-base workflow / P32 片基测量流程</title>
+  <desc id="desc">At working lamp levels, take three readings per lamp with no film, film, and no film. Use the same P32 exposure across all nine readings. In the second section, view the mixed-light estimate based on the three single-lamp spectra. Measure the actual mixed light and save that measured reference for later comparison. 各路灯使用工作灯档，逐色采集无片基、有片基、无片基。九次采集使用同一 P32 曝光。在第二部分查看单色合成参考，再实测三路同开的透片光并保存参考。</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#102531"/>
@@ -34,43 +34,47 @@
   <rect x="54" y="40" width="44" height="4" rx="2" fill="url(#accent)"/>
   <text class="eyebrow" x="54" y="70">FLAMEEYE MACOS / P32 USB</text>
   <text class="hero" x="54" y="119">Film-base measurements with P32</text>
-  <text class="subhead" x="54" y="153" lang="zh-CN">用 P32 测透过率，记录和复现工作灯光</text>
+  <text class="subhead" x="54" y="153" lang="zh-CN">测透过率，估算并实测混光</text>
 
   <g>
     <rect class="panel" x="54" y="183" width="544" height="151" rx="15"/>
-    <text class="eyebrow" x="74" y="209">OPTIONAL / 可选</text>
-    <text class="heading" x="74" y="242">Check lamp output without film</text>
-    <text class="zh-heading" x="74" y="267" lang="zh-CN">空载检查各路最大输出</text>
-    <text class="body" x="74" y="295">Remove the film. Run one RGB lamp at maximum at a time.</text>
-    <text class="zh-body" x="74" y="318" lang="zh-CN">取出片基，红、绿、蓝每次只开一路到最大档。</text>
+    <text class="eyebrow" x="74" y="209">STEP 01</text>
+    <text class="heading" x="74" y="242">Capture film-base transmittance</text>
+    <text class="zh-heading" x="74" y="267" lang="zh-CN">片基透过率采集</text>
+    <text class="body" x="74" y="295">No film → film → no film, one lamp at a time.</text>
+    <text class="zh-body" x="74" y="318" lang="zh-CN">每色用工作灯档，九次采集共用一次 P32 曝光设置。</text>
   </g>
+
+  <path class="line" d="M602 256h36m-6-4 6 4-6 4"/>
 
   <g>
     <rect class="panel" x="642" y="183" width="544" height="151" rx="15"/>
-    <text class="eyebrow" x="662" y="209">SEPARATE TEST / 独立测量</text>
-    <text class="heading" x="662" y="242">Measure transmittance for each lamp</text>
-    <text class="zh-heading" x="662" y="267" lang="zh-CN">片基透过率</text>
-    <text class="body" x="662" y="295">No film → film → no film. Keep lamp level and exposure fixed.</text>
-    <text class="zh-body" x="662" y="318" lang="zh-CN">保持灯亮和曝光，依次测无片基、有片基、无片基。</text>
+    <text class="eyebrow" x="662" y="209">STEP 02</text>
+    <text class="heading" x="662" y="242">View the mixed-light estimate</text>
+    <text class="zh-heading" x="662" y="267" lang="zh-CN">片基配平 · 单色合成参考</text>
+    <text class="body" x="662" y="295">Add the three through-film signals within each band.</text>
+    <text class="zh-body" x="662" y="318" lang="zh-CN">将三路单色透片实测按相同波段分别积分、相加。</text>
   </g>
+
+  <path class="line" d="M914 337v20m-4-6 4 6 4-6"/>
 
   <g>
     <rect x="54" y="361" width="1132" height="238" rx="16" fill="url(#working)" stroke="#5b839c" stroke-width="1.2"/>
     <rect x="73" y="382" width="4" height="54" rx="2" fill="url(#accent)"/>
-    <text class="heading" x="92" y="407">Save the working light and compare it next time</text>
-    <text class="zh-heading" x="92" y="433" lang="zh-CN">片基配平 · 保存和复现实际工作灯光</text>
+    <text class="heading" x="92" y="407">Check and save the measured working light</text>
+    <text class="zh-heading" x="92" y="433" lang="zh-CN">混光实测 · 保存和复现实际工作灯光</text>
 
     <g>
       <rect class="panel" x="73" y="457" width="346" height="119" rx="12"/>
-      <text class="heading" x="90" y="489">01  Measure through film</text>
-      <text class="zh-heading" x="90" y="515" lang="zh-CN">按实际工作灯档测量透片光</text>
-      <text class="body" x="90" y="545">Cover the probe opening with film base.</text>
-      <text class="zh-body" x="90" y="565" lang="zh-CN">让片基盖住整个探头入光口。</text>
+      <text class="heading" x="90" y="489">Measure through film</text>
+      <text class="zh-heading" x="90" y="515" lang="zh-CN">三路按原工作灯档同开</text>
+      <text class="body" x="90" y="545">Compare the measured mix with the estimate.</text>
+      <text class="zh-body" x="90" y="565" lang="zh-CN">把透片混光实测与单色合成参考对照。</text>
     </g>
     <path class="line" d="M421 516h24m-6-4 6 4-6 4"/>
     <g>
       <rect class="panel" x="447" y="457" width="346" height="119" rx="12"/>
-      <text class="heading" x="464" y="489">02  Save a reference</text>
+      <text class="heading" x="464" y="489">Save a reference</text>
       <text class="zh-heading" x="464" y="515" lang="zh-CN">保存片基光谱参考</text>
       <text class="body" x="464" y="545">Save the measured shares and total.</text>
       <text class="zh-body" x="464" y="565" lang="zh-CN">保存实测波段份额和积分合计。</text>
@@ -78,8 +82,8 @@
     <path class="line" d="M795 516h24m-6-4 6 4-6 4"/>
     <g>
       <rect class="panel" x="821" y="457" width="346" height="119" rx="12"/>
-      <text class="heading" x="838" y="489">03  Compare live readings</text>
-      <text class="zh-heading" x="838" y="515" lang="zh-CN">已保存参考 → 光谱复现</text>
+      <text class="heading" x="838" y="489">Compare live readings</text>
+      <text class="zh-heading" x="838" y="515" lang="zh-CN">从已保存参考选择混光记录</text>
       <text class="body" x="838" y="545">Use the same film base and placement.</text>
       <text class="zh-body" x="838" y="565" lang="zh-CN">用同一片基和摆位对照参考。</text>
     </g>

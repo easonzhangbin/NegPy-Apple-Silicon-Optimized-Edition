@@ -11,10 +11,25 @@ struct RGBCalibrationWindow: View {
     let toggleLive: () -> Void
     let capture: (UInt32?) async throws -> [Measurement]
 
-    @State private var tab: Tab = .live
+    @AppStorage("filmBase.transmission.captures") private var captureData = Data()
     @State private var spectra: [RGBLightChannel: SpectrumSeries] = [:]
     @State private var pendingCapture: PendingCapture?
     @State private var spectrumIssue: String?
+
+    private var captureExposure: UInt32? {
+        guard let device else { return nil }
+        return spectra.values.compactMap(\.before).first { $0.deviceID == device.id }?.exposureUS
+    }
+
+    private var captureReference: FilmBaseLiveReference? {
+        guard let device else { return nil }
+        let samples = RGBLightChannel.allCases.compactMap { channel -> FilmBaseSpectrum? in
+            guard let series = spectra[channel], let result = series.result, abs(result.drift) <= 0.05,
+                  let film = series.film, film.deviceID == device.id else { return nil }
+            return film
+        }
+        return FilmBaseLiveReference(combining: samples)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
@@ -27,47 +42,78 @@ struct RGBCalibrationWindow: View {
                 Text("RGB 校准")
                     .font(InstrumentFont.style(.title2))
                 Spacer()
-                Picker("工作区", selection: $tab) {
-                    Text("片基配平").tag(Tab.live)
-                    Text("片基透过率").tag(Tab.spectrum)
+                if isLive {
+                    Button("停止连续测量", action: toggleLive)
+                        .instrumentButton()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 380)
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 11) {
-                    switch tab {
-                    case .live:
-                        HStack {
-                            Spacer()
-                            Button(action: toggleLive) {
-                                InstrumentFont.controlText(isLive ? "停止连续测量" : "开始连续测量")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 15) {
+                        spectrumWorkspace
+                        if captureReference != nil {
+                            HStack {
+                                Label("单色合成参考已生成", systemImage: "checkmark.circle")
+                                    .foregroundStyle(InstrumentColor.teal)
+                                Spacer()
+                                Button("查看配平参考") { proxy.scrollTo("balance", anchor: .top) }
+                                    .instrumentButton(prominent: true)
                             }
-                            .instrumentButton(prominent: true)
-                            .disabled(!isLive && (isBusy || device?.protocolProfile != .legacyP32))
                         }
-                        if let liveIssue { issueLabel(liveIssue) }
-                        LiveFilmBalanceView(measurement: measurement, startedAt: isLive ? captureStartedAt : nil)
-                    case .spectrum: spectrumWorkspace
+
+                        Divider()
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("② 片基配平").font(InstrumentFont.style(.headline))
+                                Spacer()
+                                if !isLive {
+                                    Button("开始连续测量", action: toggleLive)
+                                        .instrumentButton(prominent: true)
+                                        .disabled(isBusy || pendingCapture != nil || device?.protocolProfile != .legacyP32)
+                                }
+                            }
+                            if let liveIssue { issueLabel(liveIssue) }
+                            LiveFilmBalanceView(measurement: measurement?.exposureRevision == nil ? nil : measurement,
+                                                startedAt: isLive ? captureStartedAt : nil,
+                                                captureReference: captureReference)
+                        }
+                        .id("balance")
                     }
+                    .padding(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(20)
         .foregroundStyle(InstrumentColor.text)
+        .onAppear {
+            spectra = (try? JSONDecoder().decode([RGBLightChannel: SpectrumSeries].self, from: captureData)) ?? [:]
+        }
     }
 
     private var spectrumWorkspace: some View {
         Group {
+            HStack {
+                Text("① 片基透过率采集").font(InstrumentFont.style(.headline))
+                Spacer()
+                if !spectra.isEmpty {
+                    Button("开始新一组") {
+                        spectra = [:]
+                        captureData = Data()
+                        spectrumIssue = nil
+                    }
+                    .instrumentButton()
+                    .disabled(isBusy || pendingCapture != nil)
+                    .help("清除本组采集。下一次无片基首测会重新选择曝光。")
+                }
+            }
             VStack(alignment: .leading, spacing: 5) {
-                Text("分别把灯切到红、绿、蓝单色。每色三次采集都保持灯亮、灯档和位置一致。先测无片基，再放入片基，最后取出复测。后两次沿用首次曝光。让片基覆盖整个入光口，并遮挡杂光。")
+                Text("按实际工作灯档逐路测红、绿、蓝。每路先测无片基，再放入片基，最后取出复测。全组沿用首次曝光。保持灯档和摆位，让片基覆盖入光口并遮挡杂光。")
                     .fixedSize(horizontal: false, vertical: true)
                 if let device, device.protocolProfile == .legacyP32 {
-                    Text("P32  \(device.id)")
+                    let exposure = captureExposure.map { "  ·  全组曝光 \($0) µs" } ?? ""
+                    Text("P32  \(device.id)\(exposure)")
                         .font(InstrumentFont.style(.caption, light: true))
                 } else {
                     Text("请在主窗口连接 P32。")
@@ -77,10 +123,26 @@ struct RGBCalibrationWindow: View {
             .font(InstrumentFont.style(.callout, light: true))
             .foregroundStyle(InstrumentColor.secondary)
 
-            if let spectrumIssue { issueLabel(spectrumIssue) }
+            if isLive {
+                Text("先停止连续测量，再采集单色光谱。")
+                    .font(InstrumentFont.style(.callout, light: true))
+                    .foregroundStyle(InstrumentColor.secondary)
+            }
+            if let spectrumIssue {
+                issueLabel(spectrumIssue)
+                if captureExposure != nil {
+                    Text("若锁定曝光不适用，请开始新一组，从无片基时较亮的一路首测。")
+                        .font(InstrumentFont.style(.callout, light: true))
+                        .foregroundStyle(InstrumentColor.secondary)
+                }
+            }
 
             ForEach(RGBLightChannel.allCases) { channel in
                 spectrumCard(channel)
+            }
+            if captureReference == nil,
+               RGBLightChannel.allCases.allSatisfy({ spectra[$0]?.after != nil }) {
+                issueLabel("本组无法合成参考。请核对仪器、曝光及无片基前后变化，再重采不合格的光谱。")
             }
         }
     }
@@ -167,7 +229,7 @@ struct RGBCalibrationWindow: View {
         guard let device, canCapture(phase, series: previous) else { return }
         pendingCapture = PendingCapture(channel: channel, phase: phase)
         spectrumIssue = nil
-        let exposure = phase == .before ? nil : previous.before?.exposureUS
+        let exposure = phase == .before ? captureExposure : previous.before?.exposureUS
 
         Task {
             defer { pendingCapture = nil }
@@ -179,6 +241,7 @@ struct RGBCalibrationWindow: View {
                     return
                 }
 
+                if exposure == nil { spectra = [:] }
                 switch phase {
                 case .before:
                     spectra[channel] = SpectrumSeries(before: sample)
@@ -187,6 +250,7 @@ struct RGBCalibrationWindow: View {
                 case .after:
                     spectra[channel] = SpectrumSeries(before: previous.before, film: previous.film, after: sample)
                 }
+                captureData = try JSONEncoder().encode(spectra)
             } catch {
                 spectrumIssue = error.localizedDescription
             }
@@ -213,8 +277,6 @@ struct RGBCalibrationWindow: View {
         }
     }
 
-    private enum Tab { case live, spectrum }
-
     private enum CapturePhase: Equatable {
         case before, film, after
 
@@ -232,7 +294,7 @@ struct RGBCalibrationWindow: View {
         let phase: CapturePhase
     }
 
-    private struct SpectrumSeries {
+    private struct SpectrumSeries: Codable {
         var before: FilmBaseSpectrum?
         var film: FilmBaseSpectrum?
         var after: FilmBaseSpectrum?
@@ -246,7 +308,9 @@ struct RGBCalibrationWindow: View {
         }
 
         var result: (transmission: Double, drift: Double)? {
-            guard let before, let film, let after, before.area > 0 else { return nil }
+            guard let before, let film, let after, before.area > 0,
+                  film.deviceID == before.deviceID, after.deviceID == before.deviceID,
+                  film.exposureUS == before.exposureUS, after.exposureUS == before.exposureUS else { return nil }
             let baseline = (before.area + after.area) / 2
             let transmission = film.area / baseline
             let drift = (after.area - before.area) / before.area

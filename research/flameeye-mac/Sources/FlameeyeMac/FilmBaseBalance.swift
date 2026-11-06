@@ -38,10 +38,13 @@ enum RGBLightChannel: String, CaseIterable, Codable, Identifiable, Sendable {
     }
 }
 
-struct FilmBaseSpectrum: Sendable {
+struct FilmBaseSpectrum: Codable, Sendable {
     let area: Double
     let exposureUS: UInt32
     let deviceID: String
+    let channel: RGBLightChannel?
+    let bandAreas: [Double]?
+    let capturedAt: Date?
 
     init(channel: RGBLightChannel, frames: [Measurement], requireNormal: Bool) throws {
         guard let first = frames.first, frames.count >= 5,
@@ -75,6 +78,10 @@ struct FilmBaseSpectrum: Sendable {
         area = (areas[(areas.count - 1) / 2] + areas[areas.count / 2]) / 2
         exposureUS = first.exposureUS
         deviceID = first.device.id
+        self.channel = channel
+        let vectors = frames.compactMap { FilmBaseLiveReading.integratedBandAreas(in: $0.points) }
+        bandAreas = vectors.count == frames.count ? FilmBaseLiveReading.medianBandAreas(vectors) : nil
+        capturedAt = frames.map(\.capturedAt).max()
     }
 }
 
@@ -91,14 +98,8 @@ struct FilmBaseLiveReading: Sendable {
     init?(measurement: Measurement) {
         guard measurement.device.protocolProfile == .legacyP32,
               case .normal = measurement.exposure,
-              measurement.exposureUS > 0 else { return nil }
-        var areas: [Double] = []
-        for band in Self.bands {
-            let points = measurement.points.filter { band.contains($0.wavelength) }
-            guard points.count == band.count,
-                  points.allSatisfy({ $0.value.isFinite && $0.value >= 0 }) else { return nil }
-            areas.append(points.reduce(0) { $0 + $1.value })
-        }
+              measurement.exposureUS > 0,
+              let areas = Self.integratedBandAreas(in: measurement.points) else { return nil }
         let total = areas.reduce(0, +)
         guard total.isFinite, total > 0 else { return nil }
         self.total = total
@@ -113,10 +114,7 @@ struct FilmBaseLiveReading: Sendable {
               readings.allSatisfy({ $0.deviceID == latest.deviceID && $0.exposureUS == latest.exposureUS }) else {
             return nil
         }
-        let medians = Self.bands.indices.map { index in
-            let areas = readings.map { $0.shares[index] * $0.total }.sorted()
-            return (areas[(areas.count - 1) / 2] + areas[areas.count / 2]) / 2
-        }
+        let medians = Self.medianBandAreas(readings.map { reading in reading.shares.map { $0 * reading.total } })
         let total = medians.reduce(0, +)
         guard total.isFinite, total > 0 else { return nil }
         self.total = total
@@ -124,6 +122,28 @@ struct FilmBaseLiveReading: Sendable {
         deviceID = latest.deviceID
         capturedAt = latest.capturedAt
         exposureUS = latest.exposureUS
+    }
+
+    fileprivate static func integratedBandAreas(in points: [SpectrumPoint]) -> [Double]? {
+        var areas: [Double] = []
+        for band in bands {
+            let samples = points.filter { band.contains($0.wavelength) }
+            guard samples.count == band.count,
+                  samples.allSatisfy({ $0.value.isFinite && $0.value >= 0 }) else { return nil }
+            let area = samples.reduce(0) { $0 + $1.value }
+            guard area.isFinite else { return nil }
+            areas.append(area)
+        }
+        return areas
+    }
+
+    fileprivate static func medianBandAreas(_ vectors: [[Double]]) -> [Double] {
+        bands.indices.map { index in
+            let areas = vectors.map { $0[index] }.sorted()
+            let low = areas[(areas.count - 1) / 2]
+            let high = areas[areas.count / 2]
+            return low + (high - low) / 2
+        }
     }
 }
 
@@ -133,6 +153,7 @@ struct FilmBaseLiveReference: Codable, Sendable {
     let deviceID: String
     let capturedAt: Date
     let exposureUS: UInt32?
+    let isEstimated: Bool?
 
     init(reading: FilmBaseLiveReading) {
         shares = reading.shares
@@ -140,6 +161,33 @@ struct FilmBaseLiveReference: Codable, Sendable {
         deviceID = reading.deviceID
         capturedAt = reading.capturedAt
         exposureUS = reading.exposureUS
+        isEstimated = nil
+    }
+
+    init?(combining samples: [FilmBaseSpectrum]) {
+        let channels = RGBLightChannel.allCases
+        guard samples.count == channels.count, let first = samples.first,
+              !first.deviceID.isEmpty, first.exposureUS > 0,
+              Set(samples.compactMap(\.channel)) == Set(channels),
+              samples.allSatisfy({ $0.deviceID == first.deviceID && $0.exposureUS == first.exposureUS }) else { return nil }
+
+        let dates = samples.compactMap(\.capturedAt)
+        let vectors = samples.compactMap(\.bandAreas)
+        guard dates.count == samples.count, dates.allSatisfy({ $0.timeIntervalSinceReferenceDate.isFinite }),
+              let latest = dates.max(), vectors.count == samples.count,
+              vectors.allSatisfy({ $0.count == channels.count && $0.allSatisfy { $0.isFinite && $0 >= 0 } }) else { return nil }
+
+        let sums = channels.indices.map { index in vectors.reduce(0) { $0 + $1[index] } }
+        let total = sums.reduce(0, +)
+        guard total.isFinite, total > 0, sums.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        let shares = sums.map { $0 / total }
+        guard shares.allSatisfy({ $0 > 0 && $0 < 1 }) else { return nil }
+        self.shares = shares
+        self.total = total
+        deviceID = first.deviceID
+        capturedAt = latest
+        exposureUS = first.exposureUS
+        isEstimated = true
     }
 }
 
