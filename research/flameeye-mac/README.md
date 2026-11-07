@@ -18,6 +18,8 @@ Open `research/flameeye-mac/dist/Flameeye Mac.app`. Connect the P32 and select i
 
 Flameeye uses LG1055 Regular and Light for Latin text and digits when these fonts are available. Otherwise, it uses the system font.
 
+During continuous measurement, the spectrum line and fill move between successive frames. The transition follows the measurement cadence and stops at the latest frame. Hover values show the latest measured sample. The app honors the macOS Reduce Motion setting. Measurement values and CSV exports retain the instrument readings.
+
 ## ① Capture film-base transmittance
 
 1. Set each lamp to the level you plan to use. Fix the light and probe positions. Block stray light.
@@ -39,6 +41,8 @@ The band shares describe the P32 signal integrated over three wavelength ranges 
 ## 中文操作说明
 
 火眼通过 USB 读取 P32。在同一页先测片基透过率，再根据三路单色实测估算混光，并用实时混光测量对照。连接 P32 后，在主窗口打开「RGB 校准」。
+
+连续测量时，光谱线和填充在相邻帧之间平滑过渡，过渡速度随采样间隔调整。停止测量后显示最后一帧。悬浮数值显示最新实测采样。软件遵循 macOS 的「减少动态效果」设置，测量数值和 CSV 导出保留仪器实测值。
 
 ### ① 片基透过率采集
 

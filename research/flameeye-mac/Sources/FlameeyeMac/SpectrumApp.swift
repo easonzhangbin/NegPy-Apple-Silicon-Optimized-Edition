@@ -321,6 +321,7 @@ private struct SpectrumWorkspace: View {
                 measurement: model.measurement,
                 device: model.device,
                 activity: model.activity,
+                captureStartedAt: model.captureStartedAt,
                 correction: activeWavelengthCorrection
             )
             footer
@@ -637,8 +638,27 @@ private struct SpectrumPanel: View {
     let measurement: Measurement?
     let device: Device?
     let activity: WorkspaceModel.Activity?
+    let captureStartedAt: Date?
     let correction: WavelengthCorrection?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var hoverLocation: CGPoint?
+    @State private var transition = SpectrumTransition()
+    @State private var previousPlotKey: PlotKey?
+
+    private struct PlotKey: Equatable {
+        let device: Device?
+        let session: Date?
+        let wavelengths: [Double]
+        let corrected: Bool
+        let animated: Bool
+    }
+
+    private struct PlotFrame: Equatable {
+        let key: PlotKey
+        let capturedAt: Date?
+        let intensities: [Double]
+    }
 
     var body: some View {
         let domain = displayedDomain
@@ -647,7 +667,20 @@ private struct SpectrumPanel: View {
         let samples = correction.map { profile in
             allSamples.filter { (profile.startNM...profile.endNM).contains($0.wavelength) }
         } ?? allSamples
-        let peak = allSamples.map(\.value).max() ?? 0
+        let peak = allSamples.lazy.map(\.value).filter { $0.isFinite && $0 > 0 }.max() ?? 0
+        let frame = PlotFrame(
+            key: PlotKey(
+                device: measurement?.device,
+                session: captureStartedAt,
+                wavelengths: samples.map { displayedWavelength($0.wavelength) },
+                corrected: correction != nil,
+                animated: activity == .repeating && measurement?.device == device
+                    && (measurement?.capturedAt ?? .distantPast) >= (captureStartedAt ?? .distantFuture)
+                    && !reduceMotion && scenePhase != .background
+            ),
+            capturedAt: measurement?.capturedAt,
+            intensities: SpectrumTransition.normalized(samples.map(\.value), peak: peak)
+        )
 
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -674,17 +707,27 @@ private struct SpectrumPanel: View {
                     width: max(1, geometry.size.width - 57),
                     height: max(1, geometry.size.height - 39)
                 )
-                let hovered = hoveredPoint(samples: samples, plot: plot, domain: domain)
-                Canvas { context, _ in
-                    drawGrid(context, in: plot, domain: domain)
-                    drawSpectrum(context, in: plot, samples: samples, peak: peak, domain: domain)
-                    if let hovered {
-                        drawCursor(context, in: plot, point: hovered, peak: peak, domain: domain)
+                let hoveredIndex = hoveredSampleIndex(samples: samples, plot: plot, domain: domain)
+                ZStack {
+                    Canvas { context, _ in
+                        drawGrid(context, in: plot, domain: domain)
                     }
+                    TimelineView(.explicit(transition.ticks)) { _ in
+                        let values = previousPlotKey == frame.key
+                            ? transition.values(at: ProcessInfo.processInfo.systemUptime) : frame.intensities
+                        Canvas { context, _ in
+                            drawSpectrum(context, in: plot, samples: samples, intensities: values, domain: domain)
+                            if let index = hoveredIndex, values.indices.contains(index) {
+                                drawCursor(context, in: plot, point: samples[index],
+                                           intensity: values[index], domain: domain)
+                            }
+                        }
+                    }
+                    .id(transition.generation)
                 }
                 .overlay(alignment: .topTrailing) {
-                    if let hovered {
-                        Text(hoverLabel(hovered, peak: peak))
+                    if let index = hoveredIndex {
+                        Text(hoverLabel(samples[index], peak: peak))
                             .font(InstrumentFont.size(11))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
@@ -709,12 +752,20 @@ private struct SpectrumPanel: View {
                 }
                 .accessibilityLabel(correction == nil ? "光谱曲线" : "临时修正后的光谱曲线")
                 .accessibilityValue(samples.isEmpty ? emptyMessage : "\(rangeText)，\(samples.count) 个采样点"
-                    + (hovered.map { "，" + hoverLabel($0, peak: peak) } ?? ""))
+                    + (hoveredIndex.map { "，" + hoverLabel(samples[$0], peak: peak) } ?? ""))
             }
             .frame(minHeight: 235)
         }
         .padding(15)
         .instrumentPanel()
+        .onAppear { updateTransition(frame, animated: false) }
+        .onChange(of: frame) { updateTransition($0, animated: true) }
+    }
+
+    private func updateTransition(_ frame: PlotFrame, animated: Bool) {
+        transition.update(to: frame.intensities, at: ProcessInfo.processInfo.systemUptime, date: Date(),
+                          animated: animated && frame.key.animated && previousPlotKey == frame.key)
+        previousPlotKey = frame.key
     }
 
     private var emptyMessage: String {
@@ -760,16 +811,16 @@ private struct SpectrumPanel: View {
         let wavelength = axisValue(displayedWavelength(point.wavelength)) + " nm"
         let original = correction == nil ? "" : "（原始 \(point.wavelength) nm）"
         let percent = peak > 0 ? point.value / peak * 100 : 0
-        return wavelength + original + String(format: "  ·  %.1f%%", percent)
+        return "最新采样  " + wavelength + original + String(format: "  ·  %.1f%%", percent)
     }
 
-    private func hoveredPoint(samples: [SpectrumPoint], plot: CGRect, domain: ClosedRange<Double>) -> SpectrumPoint? {
+    private func hoveredSampleIndex(samples: [SpectrumPoint], plot: CGRect, domain: ClosedRange<Double>) -> Int? {
         guard let hoverLocation, plot.contains(hoverLocation), !samples.isEmpty else { return nil }
         let fraction = Double((hoverLocation.x - plot.minX) / plot.width)
         let wavelength = domain.lowerBound + fraction * (domain.upperBound - domain.lowerBound)
-        return samples.min {
-            abs(displayedWavelength($0.wavelength) - wavelength)
-                < abs(displayedWavelength($1.wavelength) - wavelength)
+        return samples.indices.min {
+            abs(displayedWavelength(samples[$0].wavelength) - wavelength)
+                < abs(displayedWavelength(samples[$1].wavelength) - wavelength)
         }
     }
 
@@ -813,14 +864,14 @@ private struct SpectrumPanel: View {
         _ context: GraphicsContext,
         in plot: CGRect,
         samples: [SpectrumPoint],
-        peak: Double,
+        intensities: [Double],
         domain: ClosedRange<Double>
     ) {
-        guard let first = samples.first, let last = samples.last else { return }
+        guard let first = samples.first, let last = samples.last, samples.count == intensities.count else { return }
         var line = Path()
-        line.move(to: pointPosition(first, in: plot, peak: peak, domain: domain))
-        for sample in samples.dropFirst() {
-            line.addLine(to: pointPosition(sample, in: plot, peak: peak, domain: domain))
+        line.move(to: pointPosition(first, in: plot, intensity: intensities[0], domain: domain))
+        for index in samples.indices.dropFirst() {
+            line.addLine(to: pointPosition(samples[index], in: plot, intensity: intensities[index], domain: domain))
         }
 
         var fill = line
@@ -844,10 +895,10 @@ private struct SpectrumPanel: View {
         _ context: GraphicsContext,
         in plot: CGRect,
         point: SpectrumPoint,
-        peak: Double,
+        intensity: Double,
         domain: ClosedRange<Double>
     ) {
-        let position = pointPosition(point, in: plot, peak: peak, domain: domain)
+        let position = pointPosition(point, in: plot, intensity: intensity, domain: domain)
         var line = Path()
         line.move(to: CGPoint(x: position.x, y: plot.minY))
         line.addLine(to: CGPoint(x: position.x, y: plot.maxY))
@@ -860,10 +911,10 @@ private struct SpectrumPanel: View {
         context.fill(Path(ellipseIn: circle), with: .color(InstrumentColor.text))
     }
 
-    private func pointPosition(_ point: SpectrumPoint, in plot: CGRect, peak: Double, domain: ClosedRange<Double>) -> CGPoint {
+    private func pointPosition(_ point: SpectrumPoint, in plot: CGRect, intensity: Double, domain: ClosedRange<Double>) -> CGPoint {
         CGPoint(
             x: xPosition(displayedWavelength(point.wavelength), domain: domain, plot: plot),
-            y: plot.maxY - plot.height * (peak > 0 ? point.value / peak : 0)
+            y: plot.maxY - plot.height * intensity
         )
     }
 
