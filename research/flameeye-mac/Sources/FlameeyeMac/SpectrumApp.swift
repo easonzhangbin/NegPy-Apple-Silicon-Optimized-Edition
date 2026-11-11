@@ -17,6 +17,16 @@ struct SpectrumApp: App {
         }
         .defaultSize(width: 1050, height: 740)
 
+        Window("i1Display 色度与亮度", id: "i1display") {
+            I1DisplayWindow()
+                .font(InstrumentFont.style(.body))
+                .preferredColorScheme(.dark)
+                .tint(InstrumentColor.teal)
+                .frame(minWidth: 720, minHeight: 580)
+                .background { InstrumentWindowBackdrop() }
+        }
+        .defaultSize(width: 820, height: 700)
+
         Window("P32 测量详情", id: "p32-details") {
             Group {
                 if let frame = model.measurement, frame.device.protocolProfile == .legacyP32 {
@@ -347,6 +357,24 @@ private struct SpectrumWorkspace: View {
     }
 
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 13) {
+                headerBrand
+                Spacer()
+                headerActions
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                headerBrand
+                HStack {
+                    Spacer()
+                    headerActions
+                }
+            }
+        }
+        .controlSize(.large)
+    }
+
+    private var headerBrand: some View {
         HStack(spacing: 13) {
             Group {
                 if let icon = Self.appIcon {
@@ -370,9 +398,12 @@ private struct SpectrumWorkspace: View {
                     .tracking(1.6)
                     .foregroundStyle(InstrumentColor.secondary)
             }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
 
-            Spacer()
-
+    private var headerActions: some View {
+        HStack(spacing: 13) {
             if let measurement = model.measurement {
                 let timestamp = measurement.capturedAt.formatted(date: .omitted, time: .standard)
                 Label(model.device == nil ? "上次测量 \(timestamp)" : timestamp, systemImage: "clock")
@@ -390,6 +421,15 @@ private struct SpectrumWorkspace: View {
                 }
                 .instrumentButton()
             }
+
+            Button {
+                openWindow(id: "i1display")
+            } label: {
+                InstrumentFont.controlText("i1Display")
+            }
+            .instrumentButton()
+            .help("使用 ArgyllCMS 测量 i1Display 的亮度和色度。")
+            .keyboardShortcut("i", modifiers: .command)
 
             Button {
                 openWindow(id: "rgb-calibration")
@@ -411,7 +451,7 @@ private struct SpectrumWorkspace: View {
             .keyboardShortcut("e", modifiers: .command)
             .disabled(model.measurement == nil)
         }
-        .controlSize(.large)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var connection: some View {

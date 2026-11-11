@@ -20,6 +20,17 @@ Flameeye uses LG1055 Regular and Light for Latin text and digits when these font
 
 During continuous measurement, the spectrum line and fill move between successive frames. The transition follows the measurement cadence and stops at the latest frame. Hover values show the latest measured sample. The app honors the macOS Reduce Motion setting. Measurement values and CSV exports retain the instrument readings.
 
+## i1Display measurements
+
+Click **i1Display** to open the colorimeter window. This window uses the separately installed [ArgyllCMS](https://www.argyllcms.com/) `spotread` tool. Flameeye searches common installation folders, including an Argyll folder in Downloads. Use the tool picker if the tool is elsewhere. ArgyllCMS is an external AGPL-licensed dependency and is not included in this app.
+
+1. Connect one i1Display3-family instrument over USB, such as an i1Display Pro. Close another measurement application if it holds the instrument.
+2. Select **发光测量** for a display or light panel. Move the diffuser away from the lens. Select **环境光测量** for illuminance, with the diffuser covering the lens.
+3. Keep the target and instrument still. Start a single reading or continuous measurement. Emissive Y is luminance in cd/m². Ambient Y is illuminance in lx. Export CSV to save the displayed reading.
+4. In emissive mode, select a matching CCSS or CCMX correction when available. The default uses the instrument's generic correction. Absolute accuracy for a narrowband source needs a suitable correction. Ambient mode uses the instrument's diffuser calibration.
+
+The window shows XYZ and xy chromaticity. CCT and Duv come from ArgyllCMS and apply to near-white light. An i1Display cannot supply a spectrum, peak wavelengths, band integrals, or CRI. Its readings do not establish camera-channel exposure balance or replace the P32 film-base reference.
+
 ## ① Capture film-base transmittance
 
 1. Set each lamp to the level you plan to use. Fix the light and probe positions. Block stray light.
@@ -43,6 +54,17 @@ The band shares describe the P32 signal integrated over three wavelength ranges 
 火眼通过 USB 读取 P32。在同一页先测片基透过率，再根据三路单色实测估算混光，并用实时混光测量对照。连接 P32 后，在主窗口打开「RGB 校准」。
 
 连续测量时，光谱线和填充在相邻帧之间平滑过渡，过渡速度随采样间隔调整。停止测量后显示最后一帧。悬浮数值显示最新实测采样。软件遵循 macOS 的「减少动态效果」设置，测量数值和 CSV 导出保留仪器实测值。
+
+### i1Display 色度与亮度
+
+点主窗口的「i1Display」打开独立测量窗口。此功能调用单独安装的 [ArgyllCMS](https://www.argyllcms.com/) `spotread` 工具。软件会搜索常见目录，包括「下载」中的 Argyll 文件夹。工具位于其他位置时，可手动选择。应用不附带 ArgyllCMS 可执行文件。
+
+1. 通过 USB 连接一台 i1Display3 系列仪器，例如 i1Display Pro。如果其他测量软件占用仪器，请先结束其测量。
+2. 测显示器或灯板时选「发光测量」，移开镜头前的扩散盖。测环境照度时选「环境光测量」，让扩散盖覆盖镜头。
+3. 固定目标和仪器，进行单次或连续测量。发光模式的 Y 是亮度，单位 cd/m²；环境光模式的 Y 是照度，单位 lx。用「导出 CSV」保存当前读数。
+4. 发光模式下，有匹配的 CCSS 或 CCMX 校正文件时，可选择文件。默认采用仪器通用校正。窄带光源的绝对精度需要匹配的校正。环境光模式使用仪器扩散罩校正。
+
+窗口显示 XYZ、xy 色度，以及 ArgyllCMS 给出的色温和 Duv。色温只适合接近白光的目标。i1Display 不提供光谱、峰位、波段积分或显色指数。这些读数不能直接判定相机三通道的曝光配平，也不替代 P32 的片基光谱参考。
 
 ### ① 片基透过率采集
 
